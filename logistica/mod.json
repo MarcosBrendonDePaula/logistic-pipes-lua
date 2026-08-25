@@ -79,32 +79,61 @@
           "ref": "cano"
         },
         "obj_parts": {
-          "core": {
-            "groups": [
-              "Edge_M_",
-              "Corner_M_"
-            ],
-            "texture": {
-              "ref": "corpo"
+          "core": [
+            {
+              "groups": [
+                "Edge_M_",
+                "Corner_M_"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             }
-          },
-          "connected": {
-            "groups": [
-              "Side_%s"
-            ],
-            "texture": {
-              "ref": "corpo"
+          ],
+          "connected": [
+            {
+              "groups": [
+                "Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             }
-          },
-          "disconnected": {
-            "groups": [
-              "Texture_Plate_%s"
-            ],
-            "texture": {
-              "ref": "cano"
+          ],
+          "disconnected": [
+            {
+              "groups": [
+                "Texture_Side_%s",
+                "Texture_Connector_Plate",
+                "Side_Texture_Plate"
+              ],
+              "keep_within": [
+                3,
+                3,
+                2.9,
+                13,
+                13,
+                3.1
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             },
-            "uv_scale": 0.75
-          }
+            {
+              "groups": [
+                "Texture_Plate_%s"
+              ],
+              "texture": {
+                "ref": "cano"
+              },
+              "uv_scale": 0.75,
+              "double_sided": true,
+              "expand": 1.001
+            }
+          ]
         }
       },
       "shape": {
@@ -166,32 +195,61 @@
           "ref": "provedor"
         },
         "obj_parts": {
-          "core": {
-            "groups": [
-              "Edge_M_",
-              "Corner_M_"
-            ],
-            "texture": {
-              "ref": "corpo"
+          "core": [
+            {
+              "groups": [
+                "Edge_M_",
+                "Corner_M_"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             }
-          },
-          "connected": {
-            "groups": [
-              "Side_%s"
-            ],
-            "texture": {
-              "ref": "corpo"
+          ],
+          "connected": [
+            {
+              "groups": [
+                "Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             }
-          },
-          "disconnected": {
-            "groups": [
-              "Texture_Plate_%s"
-            ],
-            "texture": {
-              "ref": "provedor"
+          ],
+          "disconnected": [
+            {
+              "groups": [
+                "Texture_Side_%s",
+                "Texture_Connector_Plate",
+                "Side_Texture_Plate"
+              ],
+              "keep_within": [
+                3,
+                3,
+                2.9,
+                13,
+                13,
+                3.1
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             },
-            "uv_scale": 0.75
-          }
+            {
+              "groups": [
+                "Texture_Plate_%s"
+              ],
+              "texture": {
+                "ref": "provedor"
+              },
+              "uv_scale": 0.75,
+              "double_sided": true,
+              "expand": 1.001
+            }
+          ]
         }
       },
       "shape": {
@@ -253,32 +311,61 @@
           "ref": "terminal"
         },
         "obj_parts": {
-          "core": {
-            "groups": [
-              "Edge_M_",
-              "Corner_M_"
-            ],
-            "texture": {
-              "ref": "corpo"
+          "core": [
+            {
+              "groups": [
+                "Edge_M_",
+                "Corner_M_"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             }
-          },
-          "connected": {
-            "groups": [
-              "Side_%s"
-            ],
-            "texture": {
-              "ref": "corpo"
+          ],
+          "connected": [
+            {
+              "groups": [
+                "Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             }
-          },
-          "disconnected": {
-            "groups": [
-              "Texture_Plate_%s"
-            ],
-            "texture": {
-              "ref": "terminal"
+          ],
+          "disconnected": [
+            {
+              "groups": [
+                "Texture_Side_%s",
+                "Texture_Connector_Plate",
+                "Side_Texture_Plate"
+              ],
+              "keep_within": [
+                3,
+                3,
+                2.9,
+                13,
+                13,
+                3.1
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             },
-            "uv_scale": 0.75
-          }
+            {
+              "groups": [
+                "Texture_Plate_%s"
+              ],
+              "texture": {
+                "ref": "terminal"
+              },
+              "uv_scale": 0.75,
+              "double_sided": true,
+              "expand": 1.001
+            }
+          ]
         }
       },
       "behavior": {
@@ -344,32 +431,61 @@
           "ref": "abastecedor"
         },
         "obj_parts": {
-          "core": {
-            "groups": [
-              "Edge_M_",
-              "Corner_M_"
-            ],
-            "texture": {
-              "ref": "corpo"
+          "core": [
+            {
+              "groups": [
+                "Edge_M_",
+                "Corner_M_"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             }
-          },
-          "connected": {
-            "groups": [
-              "Side_%s"
-            ],
-            "texture": {
-              "ref": "corpo"
+          ],
+          "connected": [
+            {
+              "groups": [
+                "Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             }
-          },
-          "disconnected": {
-            "groups": [
-              "Texture_Plate_%s"
-            ],
-            "texture": {
-              "ref": "abastecedor"
+          ],
+          "disconnected": [
+            {
+              "groups": [
+                "Texture_Side_%s",
+                "Texture_Connector_Plate",
+                "Side_Texture_Plate"
+              ],
+              "keep_within": [
+                3,
+                3,
+                2.9,
+                13,
+                13,
+                3.1
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             },
-            "uv_scale": 0.75
-          }
+            {
+              "groups": [
+                "Texture_Plate_%s"
+              ],
+              "texture": {
+                "ref": "abastecedor"
+              },
+              "uv_scale": 0.75,
+              "double_sided": true,
+              "expand": 1.001
+            }
+          ]
         }
       },
       "shape": {
@@ -432,32 +548,61 @@
           "ref": "satelite"
         },
         "obj_parts": {
-          "core": {
-            "groups": [
-              "Edge_M_",
-              "Corner_M_"
-            ],
-            "texture": {
-              "ref": "corpo"
+          "core": [
+            {
+              "groups": [
+                "Edge_M_",
+                "Corner_M_"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             }
-          },
-          "connected": {
-            "groups": [
-              "Side_%s"
-            ],
-            "texture": {
-              "ref": "corpo"
+          ],
+          "connected": [
+            {
+              "groups": [
+                "Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             }
-          },
-          "disconnected": {
-            "groups": [
-              "Texture_Plate_%s"
-            ],
-            "texture": {
-              "ref": "satelite"
+          ],
+          "disconnected": [
+            {
+              "groups": [
+                "Texture_Side_%s",
+                "Texture_Connector_Plate",
+                "Side_Texture_Plate"
+              ],
+              "keep_within": [
+                3,
+                3,
+                2.9,
+                13,
+                13,
+                3.1
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
             },
-            "uv_scale": 0.75
-          }
+            {
+              "groups": [
+                "Texture_Plate_%s"
+              ],
+              "texture": {
+                "ref": "satelite"
+              },
+              "uv_scale": 0.75,
+              "double_sided": true,
+              "expand": 1.001
+            }
+          ]
         }
       },
       "shape": {
