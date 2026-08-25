@@ -40,6 +40,16 @@
       "type": "image",
       "from": "assets/logisticspipes/pipes/request.png",
       "fallback": "minecraft:block/light_blue_terracotta"
+    },
+    "abastecedor": {
+      "type": "image",
+      "from": "assets/logisticspipes/pipes/supplier.png",
+      "fallback": "minecraft:block/orange_terracotta"
+    },
+    "satelite": {
+      "type": "image",
+      "from": "assets/logisticspipes/pipes/satellite.png",
+      "fallback": "minecraft:block/blue_terracotta"
     }
   },
   "blocks": [
@@ -80,7 +90,8 @@
           "logistica:cano",
           "logistica:provedor",
           "logistica:terminal",
-          "#minecraft:wooden_fences"
+          "logistica:abastecedor",
+          "logistica:satelite"
         ]
       },
       "block_data": true,
@@ -125,7 +136,8 @@
           "logistica:cano",
           "logistica:provedor",
           "logistica:terminal",
-          "#minecraft:wooden_fences"
+          "logistica:abastecedor",
+          "logistica:satelite"
         ]
       },
       "block_data": true,
@@ -174,13 +186,108 @@
           "logistica:cano",
           "logistica:provedor",
           "logistica:terminal",
-          "#minecraft:wooden_fences"
+          "logistica:abastecedor",
+          "logistica:satelite"
         ]
       },
       "placement": {
         "facing": "player"
       },
       "block_data": true
+    },
+    {
+      "id": "abastecedor",
+      "name": "Cano Abastecedor",
+      "material": {
+        "sound": "metal"
+      },
+      "settings": {
+        "hardness": 0.8,
+        "resistance": 1.0,
+        "non_opaque": true
+      },
+      "render": {
+        "texture": {
+          "ref": "abastecedor"
+        }
+      },
+      "shape": {
+        "core": [
+          5,
+          5,
+          5,
+          11,
+          11,
+          11
+        ],
+        "arm": [
+          5,
+          5,
+          0,
+          11,
+          11,
+          5
+        ],
+        "connects_to": [
+          "logistica:cano",
+          "logistica:provedor",
+          "logistica:terminal",
+          "logistica:abastecedor",
+          "logistica:satelite"
+        ]
+      },
+      "block_data": true,
+      "behavior": {
+        "on_use": "scripts/abastecedor_usado.lua",
+        "on_scheduled": "scripts/cano_tique.lua"
+      }
+    },
+    {
+      "id": "satelite",
+      "name": "Cano Satelite",
+      "material": {
+        "sound": "metal"
+      },
+      "settings": {
+        "hardness": 0.8,
+        "resistance": 1.0,
+        "non_opaque": true
+      },
+      "render": {
+        "texture": {
+          "ref": "satelite"
+        }
+      },
+      "shape": {
+        "core": [
+          5,
+          5,
+          5,
+          11,
+          11,
+          11
+        ],
+        "arm": [
+          5,
+          5,
+          0,
+          11,
+          11,
+          5
+        ],
+        "connects_to": [
+          "logistica:cano",
+          "logistica:provedor",
+          "logistica:terminal",
+          "logistica:abastecedor",
+          "logistica:satelite"
+        ]
+      },
+      "block_data": true,
+      "behavior": {
+        "on_use": "scripts/satelite_usado.lua",
+        "on_scheduled": "scripts/cano_tique.lua"
+      }
     }
   ],
   "events": {

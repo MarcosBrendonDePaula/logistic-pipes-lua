@@ -25,6 +25,8 @@
 local terminal = mod.import("lib/terminal.lua")
 local rede = mod.import("lib/rede.lua")
 local viagem = mod.import("lib/viagem.lua")
+local abastecimento = mod.import("lib/abastecimento.lua")
+local viagem = mod.import("lib/viagem.lua")
 
 mod.screen("terminal", terminal.evento)
 
@@ -34,8 +36,10 @@ mod.screen("terminal", terminal.evento)
 -- verificacao automatica -- e e justamente a parte que mais tem como quebrar em silencio. O
 -- comando faz as mesmas perguntas que a tela faz, e responde no log.
 --
---   /logistica ver <x> <y> <z>            o que a rede enxerga a partir dali
---   /logistica pedir <x> <y> <z> <item>   entrega, como o botao da tela faria
+--   /mod logistica ver <x> <y> <z>                        o que a rede enxerga dali
+--   /mod logistica pedir <x> <y> <z> <item>               entrega, como o botao da tela faria
+--   /mod logistica satelite <x> <y> <z> <nome>            da nome a um satelite
+--   /mod logistica abastecer <x> <y> <z> <item> <qtd>     mantem um bau em estoque
 mod.command("logistica", function(ctx)
     local args = ctx.argv or {}
     local acao = ctx.subcommand or "ver"
@@ -45,7 +49,40 @@ mod.command("logistica", function(ctx)
     local z = tonumber(args[4])
 
     if x == nil or y == nil or z == nil then
-        ctx.log.warn("uso: /logistica ver|pedir <x> <y> <z> [item]")
+        ctx.log.warn("uso: /mod logistica ver|pedir|satelite|abastecer <x> <y> <z> [...]")
+        return
+    end
+
+    -- Configurar um satelite ou um abastecedor nao precisa varrer a rede: os dois so escrevem na
+    -- posicao do proprio cano.
+    if acao == "satelite" then
+        local nome = args[5]
+        if nome == nil then
+            ctx.log.warn("uso: /mod logistica satelite <x> <y> <z> <nome>")
+            return
+        end
+        if ctx.server.get_block(x, y, z) ~= "logistica:satelite" then
+            ctx.log.warn("LOGISTICA nao ha satelite em " .. x .. "," .. y .. "," .. z)
+            return
+        end
+        abastecimento.nomear_satelite(ctx, x, y, z, nome)
+        ctx.log.info("LOGISTICA satelite=" .. nome .. " em " .. x .. "," .. y .. "," .. z)
+        return
+    end
+
+    if acao == "abastecer" then
+        local item = args[5]
+        local alvo = tonumber(args[6])
+        if item == nil or alvo == nil then
+            ctx.log.warn("uso: /mod logistica abastecer <x> <y> <z> <item> <quantidade>")
+            return
+        end
+        if ctx.server.get_block(x, y, z) ~= "logistica:abastecedor" then
+            ctx.log.warn("LOGISTICA nao ha abastecedor em " .. x .. "," .. y .. "," .. z)
+            return
+        end
+        abastecimento.configurar_abastecedor(ctx, x, y, z, item, alvo)
+        ctx.log.info("LOGISTICA abastecedor=" .. item .. " alvo=" .. alvo)
         return
     end
 
