@@ -5,6 +5,7 @@
 -- no primeiro ajuste.
 
 local rede = mod.import("lib/rede.lua")
+local viagem = mod.import("lib/viagem.lua")
 
 local POR_PEDIDO = rede.POR_PEDIDO
 
@@ -146,7 +147,7 @@ local function evento(ctx)
         estado.pagina = estado.pagina + 1
     elseif string.sub(elemento, 1, 6) == "pedir:" then
         local item = string.sub(elemento, 7)
-        local entregue, motivo = rede.entregar(ctx, estado.rede or {}, estado.terminal,
+        local entregue, motivo = viagem.entregar(ctx, estado.rede or {}, estado.terminal,
                                           item, POR_PEDIDO)
 
         if entregue > 0 then

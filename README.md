@@ -7,6 +7,43 @@ e entrega itens, escrita **sem uma linha de Java** — só `mod.json` e Lua.
 É o **primeiro mod migrado** para aquele loader, e não por acaso: o Logistic Pipes parou de ser
 atualizado pelo motivo exato que o loader existe para resolver.
 
+## Como rodar
+
+O mod nao precisa ser copiado para dentro do loader. Aponte esta pasta e o Mine Loader le direto
+daqui:
+
+```bash
+cd /caminho/do/mine-loader
+./gradlew :runClient -Pmods=/caminho/deste/repo/logistica
+```
+
+Ou, por variavel de ambiente:
+
+```bash
+MINE_LOADER_MODS=/caminho/deste/repo/logistica ./gradlew :runServer
+```
+
+Copiar era a alternativa, e a copia envelhece: o servidor passa a rodar contra um script velho
+**dizendo que passou**.
+
+## O que ja funciona
+
+- **Cano, provedor e terminal**, com o ciclo completo: o terminal pergunta a rede o que existe, e o
+  provedor tira do bau ao lado e manda.
+- **Os canos se conectam.** Cada um cresce braco em direcao ao vizinho, e a colisao acompanha o
+  desenho -- ver o braco e atravessa-lo seria pior que nao ter braco.
+- **O item viaja.** Ele anda de cano em cano, um passo a cada quatro tiques, em vez de sumir de um
+  bau e aparecer no outro. A carga em viagem mora nos dados do proprio cano, entao sobrevive ao
+  servidor cair e some junto com o cano em vez de apontar para uma posicao que nao existe mais.
+- **Item nao desaparece.** Cano quebrado no meio da viagem descarrega no inventario vizinho, e bau
+  de destino cheio segura a carga em fila.
+
+## O que falta
+
+`supplier`, `satellite`, `crafting` e os modulos de `chassis`. O `crafting` e o unico que precisa de
+ideia nova -- recursao de pedido, a arvore que o original chama de RequestTree.
+
+
 ## Por que portar um mod que parou
 
 O Logistic Pipes não parou por falta de ideia. Acompanhar as versões do Minecraft em Java custa

@@ -24,6 +24,7 @@
 
 local terminal = mod.import("lib/terminal.lua")
 local rede = mod.import("lib/rede.lua")
+local viagem = mod.import("lib/viagem.lua")
 
 mod.screen("terminal", terminal.evento)
 
@@ -58,7 +59,7 @@ mod.command("logistica", function(ctx)
             return
         end
 
-        local entregue, motivo = rede.entregar(ctx, nos, { x = x, y = y, z = z },
+        local entregue, motivo = viagem.entregar(ctx, nos, { x = x, y = y, z = z },
                                                item, rede.POR_PEDIDO)
         ctx.log.info("LOGISTICA entregue=" .. entregue .. " item=" .. item
                      .. " motivo=" .. tostring(motivo))

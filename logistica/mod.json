@@ -2,13 +2,13 @@
   "schema": 1,
   "id": "logistica",
   "name": "Logistica",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Rede de canos que encontra e entrega itens, no espirito do Logistic Pipes: um terminal pergunta a rede o que existe, e um provedor tira do bau ao lado e manda.",
   "entrypoint": "main.lua",
   "authors": [
     "Minecraft Lua Loader"
   ],
-  "icon": "assets/terminal.png",
+  "icon": "assets/lp_request.png",
   "permissions": [
     "chat.send",
     "player.read",
@@ -16,7 +16,8 @@
     "player.inventory",
     "world.read",
     "world.containers",
-    "server.command.register"
+    "server.command.register",
+    "world.write"
   ],
   "creative_tab": {
     "register": true,
@@ -27,17 +28,17 @@
   "resources": {
     "cano": {
       "type": "image",
-      "from": "assets/cano.png",
+      "from": "assets/lp_basic.png",
       "fallback": "minecraft:block/iron_block"
     },
     "provedor": {
       "type": "image",
-      "from": "assets/provedor.png",
+      "from": "assets/lp_provider.png",
       "fallback": "minecraft:block/lime_terracotta"
     },
     "terminal": {
       "type": "image",
-      "from": "assets/terminal.png",
+      "from": "assets/lp_request.png",
       "fallback": "minecraft:block/light_blue_terracotta"
     }
   },
@@ -50,17 +51,41 @@
       },
       "settings": {
         "hardness": 0.8,
-        "resistance": 1.0
+        "resistance": 1.0,
+        "non_opaque": true
       },
       "render": {
-        "textures": {
-          "all": "@cano"
+        "texture": {
+          "ref": "cano"
         }
       },
       "shape": {
-        "collision": "pillar",
-        "outline": "pillar",
-        "visual": "pillar"
+        "core": [
+          5,
+          5,
+          5,
+          11,
+          11,
+          11
+        ],
+        "arm": [
+          5,
+          5,
+          0,
+          11,
+          11,
+          5
+        ],
+        "connects_to": [
+          "logistica:cano",
+          "logistica:provedor",
+          "logistica:terminal",
+          "#minecraft:wooden_fences"
+        ]
+      },
+      "block_data": true,
+      "behavior": {
+        "on_scheduled": "scripts/cano_tique.lua"
       }
     },
     {
@@ -71,17 +96,41 @@
       },
       "settings": {
         "hardness": 0.8,
-        "resistance": 1.0
+        "resistance": 1.0,
+        "non_opaque": true
       },
       "render": {
-        "textures": {
-          "all": "@provedor"
+        "texture": {
+          "ref": "provedor"
         }
       },
       "shape": {
-        "collision": "pillar",
-        "outline": "pillar",
-        "visual": "pillar"
+        "core": [
+          5,
+          5,
+          5,
+          11,
+          11,
+          11
+        ],
+        "arm": [
+          5,
+          5,
+          0,
+          11,
+          11,
+          5
+        ],
+        "connects_to": [
+          "logistica:cano",
+          "logistica:provedor",
+          "logistica:terminal",
+          "#minecraft:wooden_fences"
+        ]
+      },
+      "block_data": true,
+      "behavior": {
+        "on_scheduled": "scripts/cano_tique.lua"
       }
     },
     {
@@ -92,16 +141,46 @@
       },
       "settings": {
         "hardness": 0.8,
-        "resistance": 1.0
+        "resistance": 1.0,
+        "non_opaque": true
       },
       "render": {
-        "textures": {
-          "all": "@terminal"
+        "texture": {
+          "ref": "terminal"
         }
       },
       "behavior": {
-        "on_use": "scripts/terminal_usado.lua"
-      }
+        "on_use": "scripts/terminal_usado.lua",
+        "on_scheduled": "scripts/cano_tique.lua"
+      },
+      "shape": {
+        "core": [
+          5,
+          5,
+          5,
+          11,
+          11,
+          11
+        ],
+        "arm": [
+          5,
+          5,
+          0,
+          11,
+          11,
+          5
+        ],
+        "connects_to": [
+          "logistica:cano",
+          "logistica:provedor",
+          "logistica:terminal",
+          "#minecraft:wooden_fences"
+        ]
+      },
+      "placement": {
+        "facing": "player"
+      },
+      "block_data": true
     }
   ],
   "events": {

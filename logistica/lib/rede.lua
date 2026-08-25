@@ -76,6 +76,70 @@ local function varrer(ctx, x, y, z)
     return nos, false
 end
 
+--- Se aquela posicao ainda e um cano da rede.
+--
+-- Usado pela viagem a cada passo: o cano da frente pode ter sido quebrado desde que a rota foi
+-- tracada, e descobrir isso na hora de andar e o que impede a carga de sumir num buraco.
+local function e_cano(ctx, x, y, z)
+    return CANOS[ctx.server.get_block(x, y, z)] == true
+end
+
+--- O caminho de canos entre duas posicoes, ou nil se nao houver.
+--
+-- A mesma busca em largura de `varrer`, guardando de onde se chegou a cada no -- e por isso o
+-- caminho devolvido e o mais curto em numero de canos. O original cobra por custo de rota
+-- (getIRoutersByCost); aqui o custo e o comprimento, que e a versao honesta enquanto nao houver
+-- canos de velocidades diferentes.
+local function rota(ctx, origem, destino)
+    if origem.x == destino.x and origem.y == destino.y and origem.z == destino.z then
+        return { { x = origem.x, y = origem.y, z = origem.z } }
+    end
+
+    local de_onde = {}
+    local vistos = { [chave(origem.x, origem.y, origem.z)] = true }
+    local fila = { { x = origem.x, y = origem.y, z = origem.z } }
+    local frente = 1
+    local visitados = 1
+
+    while frente <= #fila do
+        local atual = fila[frente]
+        frente = frente + 1
+
+        for _, lado in ipairs(LADOS) do
+            local nx, ny, nz = atual.x + lado.x, atual.y + lado.y, atual.z + lado.z
+            local k = chave(nx, ny, nz)
+
+            if not vistos[k] and CANOS[ctx.server.get_block(nx, ny, nz)] then
+                vistos[k] = true
+                de_onde[k] = atual
+                visitados = visitados + 1
+
+                if nx == destino.x and ny == destino.y and nz == destino.z then
+                    -- Refaz o caminho de tras para frente e inverte: guardar a rota inteira em cada
+                    -- no durante a busca custaria memoria proporcional ao quadrado da rede.
+                    local invertido = { { x = nx, y = ny, z = nz } }
+                    local passo = atual
+                    while passo do
+                        invertido[#invertido + 1] = { x = passo.x, y = passo.y, z = passo.z }
+                        passo = de_onde[chave(passo.x, passo.y, passo.z)]
+                    end
+
+                    local caminho = {}
+                    for i = #invertido, 1, -1 do caminho[#caminho + 1] = invertido[i] end
+                    return caminho
+                end
+
+                fila[#fila + 1] = { x = nx, y = ny, z = nz }
+
+                -- O mesmo teto de `varrer`, pela mesma razao: a busca roda dentro de um callback
+                -- com orcamento de 20 ms.
+                if visitados >= MAX_NOS then return nil end
+            end
+        end
+    end
+    return nil
+end
+
 --- Os inventarios encostados num cano, que nao sejam cano.
 --
 -- E o que liga a rede ao mundo: um bau, um forno, ou o inventario de um bloco de outro mod. O
@@ -149,59 +213,15 @@ local function mesmo_lugar(a, b)
     return a.x == b.x and a.y == b.y and a.z == b.z
 end
 
---- Tira do provedor e poe no destino, ate a quantidade pedida.
---
--- Devolve quanto de fato foi entregue. O numero real, e nao o pedido: um bau cheio no destino ou um
--- provedor que ficou sem estoque entre a leitura e a entrega sao normais, e mentir sobre isso faria
--- quem pediu procurar itens que nunca sairam.
-local function entregar(ctx, nos, terminal, item, quantidade)
-    local alvo = destino(ctx, terminal)
-    if alvo == nil then return 0, "sem bau encostado no terminal" end
-
-    local entregue = 0
-
-    for _, no in ipairs(nos) do
-        if entregue >= quantidade then break end
-
-        if no.bloco == "logistica:provedor" then
-            for _, fonte in ipairs(inventarios_em(ctx, no)) do
-                if entregue >= quantidade then break end
-
-                -- O provedor que divide o bau com o destino e pulado. Sem isto o item sairia e
-                -- voltaria ao mesmo lugar indefinidamente.
-                if mesmo_lugar(fonte, alvo) then goto proxima_fonte end
-
-                local pegar = quantidade - entregue
-                local tirado = ctx.server.extract_from(fonte.x, fonte.y, fonte.z, item, pegar)
-
-                if tirado > 0 then
-                    local sobrou = ctx.server.insert_into(alvo.x, alvo.y, alvo.z, item, tirado)
-                    entregue = entregue + (tirado - sobrou)
-
-                    -- O que nao coube volta para onde veio. Sem isto, um bau de destino cheio
-                    -- apagaria item do mundo -- o pior defeito possivel num mod de logistica.
-                    if sobrou > 0 then
-                        ctx.server.insert_into(fonte.x, fonte.y, fonte.z, item, sobrou)
-                        return entregue, "o bau de destino encheu"
-                    end
-                end
-
-                ::proxima_fonte::
-            end
-        end
-    end
-
-    if entregue == 0 then return 0, "a rede nao tem esse item agora" end
-    return entregue, nil
-end
-
-
 return {
     CANOS = CANOS,
     MAX_NOS = MAX_NOS,
     POR_PEDIDO = POR_PEDIDO,
     varrer = varrer,
+    rota = rota,
+    e_cano = e_cano,
     inventarios_em = inventarios_em,
     estoque = estoque,
-    entregar = entregar,
+    destino = destino,
+    mesmo_lugar = mesmo_lugar,
 }
