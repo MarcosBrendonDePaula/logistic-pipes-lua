@@ -45,6 +45,7 @@ mod.screen("terminal", terminal.evento)
 --   /mod logistica abastecer <x> <y> <z> <item> <qtd>     mantem um bau em estoque
 --   /mod logistica fabricar <x> <y> <z> <item> [qtd]      pede a rede que fabrique
 --   /mod logistica modulo <x> <y> <z> <slot> <item> [qtd]  configura um slot do chassi
+--   /mod logistica estado <x> <y> <z>                     conexoes daquele cano, lado a lado
 --   /mod logistica autoteste [caso]                       roda a bateria de verificacao
 --- Responde a quem pediu.
 --
@@ -74,8 +75,27 @@ mod.command("logistica", function(ctx)
     local y = tonumber(args[3])
     local z = tonumber(args[4])
 
+    -- Sem coordenada, vale o bloco que quem digitou esta olhando.
+    --
+    -- Digitar tres numeros exige abrir o F3 e anotar o que se esta vendo na frente. Mirar e o gesto
+    -- natural, e os argumentos seguintes andam uma casa para tras quando a mira decide.
+    local mirou = false
+    if (x == nil or y == nil or z == nil) and ctx.player ~= nil then
+        local alvo = ctx.player.looking_at()
+        if alvo ~= nil then
+            x, y, z = alvo.x, alvo.y, alvo.z
+            mirou = true
+
+            -- O resto dos argumentos vem logo depois da acao, e nao depois das coordenadas.
+            local deslocado = { args[1] }
+            for i = 2, #args do deslocado[i + 3] = args[i] end
+            args = deslocado
+        end
+    end
+
     if x == nil or y == nil or z == nil then
-        responder(ctx, "uso: /mod logistica ver|pedir|satelite|abastecer <x> <y> <z> [...]", true)
+        responder(ctx, "uso: /mod logistica <acao> [<x> <y> <z>] [...]"
+                        .. " -- sem coordenada, vale o bloco que voce esta olhando", true)
         return
     end
 
@@ -109,6 +129,49 @@ mod.command("logistica", function(ctx)
         end
         abastecimento.configurar_abastecedor(ctx, x, y, z, item, alvo)
         responder(ctx, "LOGISTICA abastecedor=" .. item .. " alvo=" .. alvo)
+        return
+    end
+
+    if acao == "estado" then
+        -- O estado de conexao de um cano, lado a lado.
+        --
+        -- Existe porque o desenho nao esta confiavel: sem ver o braco crescer, nao da para saber se
+        -- o cano ligou no bau ou nao. Isto pergunta ao mundo, que e a fonte que importa -- o
+        -- desenho le esse mesmo estado.
+        local bloco = ctx.server.get_block(x, y, z)
+        responder(ctx, "LOGISTICA " .. bloco .. " em " .. x .. "," .. y .. "," .. z)
+
+        local lados = {
+            { nome = "norte", dx = 0, dy = 0, dz = -1 },
+            { nome = "sul",   dx = 0, dy = 0, dz = 1 },
+            { nome = "oeste", dx = -1, dy = 0, dz = 0 },
+            { nome = "leste", dx = 1, dy = 0, dz = 0 },
+            { nome = "cima",  dx = 0, dy = 1, dz = 0 },
+            { nome = "baixo", dx = 0, dy = -1, dz = 0 },
+        }
+
+        for _, lado in ipairs(lados) do
+            local vx, vy, vz = x + lado.dx, y + lado.dy, z + lado.dz
+            local vizinho = ctx.server.get_block(vx, vy, vz)
+
+            -- Um cano conecta a cano; um bau nao vira conexao de forma, mas E alcancavel pela
+            -- rede. Sao duas coisas diferentes, e confundi-las e o que faz parecer que o cano
+            -- "nao ligou" no bau: ele nunca cresce braco para bau nenhum.
+            local ehCano = rede.e_cano(ctx, vx, vy, vz)
+            local temInventario = false
+            for _, capacidade in ipairs(ctx.server.capabilities_at(vx, vy, vz)) do
+                if capacidade == "items" then temInventario = true end
+            end
+
+            local marca = "  " .. lado.nome .. ": " .. vizinho
+            if ehCano then marca = marca .. "  [cano: braco]"
+            elseif temInventario then marca = marca .. "  [inventario: a rede alcanca, sem braco]"
+            end
+            responder(ctx, marca)
+        end
+
+        local nos = rede.varrer(ctx, x, y, z)
+        responder(ctx, "LOGISTICA a rede daqui tem " .. #nos .. " cano(s)")
         return
     end
 

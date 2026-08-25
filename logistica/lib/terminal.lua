@@ -15,9 +15,14 @@ local LARGURA = 256
 local ALTURA = 200
 local POR_PAGINA = 7
 
-local COR_TEXTO = 0xFFE8E8E8
-local COR_FRACA = 0xFF909090
-local COR_AVISO = 0xFFFFD060
+-- Cores como TEXTO, e nao como numero.
+--
+-- O loader espera "#RRGGBB" ou "#RRGGBBAA"; um numero e recusado, e a recusa derruba a montagem da
+-- tela inteira. O clique no terminal nao abria nada por causa disto, e o erro so aparecia no log --
+-- um erro de Lua num callback e registrado, e nao propagado.
+local COR_TEXTO = "#E8E8E8FF"
+local COR_FRACA = "#909090FF"
+local COR_AVISO = "#FFD060FF"
 
 --- O estado da tela por jogador.
 --
