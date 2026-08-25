@@ -50,6 +50,15 @@
       "type": "image",
       "from": "assets/logisticspipes/pipes/satellite.png",
       "fallback": "minecraft:block/blue_terracotta"
+    },
+    "modelo_cano": {
+      "type": "model",
+      "from": "models/cano.obj"
+    },
+    "corpo": {
+      "type": "image",
+      "from": "assets/logisticspipes/pipes/pipemodel.png",
+      "fallback": "minecraft:block/iron_block"
     }
   },
   "blocks": [
@@ -65,8 +74,37 @@
         "non_opaque": true
       },
       "render": {
+        "model": "@modelo_cano",
         "texture": {
           "ref": "cano"
+        },
+        "obj_parts": {
+          "core": {
+            "groups": [
+              "Edge_M_",
+              "Corner_M_"
+            ],
+            "texture": {
+              "ref": "corpo"
+            }
+          },
+          "connected": {
+            "groups": [
+              "Side_%s"
+            ],
+            "texture": {
+              "ref": "corpo"
+            }
+          },
+          "disconnected": {
+            "groups": [
+              "Texture_Plate_%s"
+            ],
+            "texture": {
+              "ref": "cano"
+            },
+            "uv_scale": 0.75
+          }
         }
       },
       "shape": {
@@ -123,8 +161,37 @@
         "non_opaque": true
       },
       "render": {
+        "model": "@modelo_cano",
         "texture": {
           "ref": "provedor"
+        },
+        "obj_parts": {
+          "core": {
+            "groups": [
+              "Edge_M_",
+              "Corner_M_"
+            ],
+            "texture": {
+              "ref": "corpo"
+            }
+          },
+          "connected": {
+            "groups": [
+              "Side_%s"
+            ],
+            "texture": {
+              "ref": "corpo"
+            }
+          },
+          "disconnected": {
+            "groups": [
+              "Texture_Plate_%s"
+            ],
+            "texture": {
+              "ref": "provedor"
+            },
+            "uv_scale": 0.75
+          }
         }
       },
       "shape": {
@@ -181,8 +248,37 @@
         "non_opaque": true
       },
       "render": {
+        "model": "@modelo_cano",
         "texture": {
           "ref": "terminal"
+        },
+        "obj_parts": {
+          "core": {
+            "groups": [
+              "Edge_M_",
+              "Corner_M_"
+            ],
+            "texture": {
+              "ref": "corpo"
+            }
+          },
+          "connected": {
+            "groups": [
+              "Side_%s"
+            ],
+            "texture": {
+              "ref": "corpo"
+            }
+          },
+          "disconnected": {
+            "groups": [
+              "Texture_Plate_%s"
+            ],
+            "texture": {
+              "ref": "terminal"
+            },
+            "uv_scale": 0.75
+          }
         }
       },
       "behavior": {
@@ -243,8 +339,37 @@
         "non_opaque": true
       },
       "render": {
+        "model": "@modelo_cano",
         "texture": {
           "ref": "abastecedor"
+        },
+        "obj_parts": {
+          "core": {
+            "groups": [
+              "Edge_M_",
+              "Corner_M_"
+            ],
+            "texture": {
+              "ref": "corpo"
+            }
+          },
+          "connected": {
+            "groups": [
+              "Side_%s"
+            ],
+            "texture": {
+              "ref": "corpo"
+            }
+          },
+          "disconnected": {
+            "groups": [
+              "Texture_Plate_%s"
+            ],
+            "texture": {
+              "ref": "abastecedor"
+            },
+            "uv_scale": 0.75
+          }
         }
       },
       "shape": {
@@ -302,8 +427,37 @@
         "non_opaque": true
       },
       "render": {
+        "model": "@modelo_cano",
         "texture": {
           "ref": "satelite"
+        },
+        "obj_parts": {
+          "core": {
+            "groups": [
+              "Edge_M_",
+              "Corner_M_"
+            ],
+            "texture": {
+              "ref": "corpo"
+            }
+          },
+          "connected": {
+            "groups": [
+              "Side_%s"
+            ],
+            "texture": {
+              "ref": "corpo"
+            }
+          },
+          "disconnected": {
+            "groups": [
+              "Texture_Plate_%s"
+            ],
+            "texture": {
+              "ref": "satelite"
+            },
+            "uv_scale": 0.75
+          }
         }
       },
       "shape": {
