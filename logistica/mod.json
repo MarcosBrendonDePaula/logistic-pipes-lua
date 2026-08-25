@@ -8,7 +8,7 @@
   "authors": [
     "Minecraft Lua Loader"
   ],
-  "icon": "assets/lp_request.png",
+  "icon": "assets/logisticspipes/pipes/request.png",
   "permissions": [
     "chat.send",
     "player.read",
@@ -28,17 +28,17 @@
   "resources": {
     "cano": {
       "type": "image",
-      "from": "assets/lp_basic.png",
+      "from": "assets/logisticspipes/pipes/basic.png",
       "fallback": "minecraft:block/iron_block"
     },
     "provedor": {
       "type": "image",
-      "from": "assets/lp_provider.png",
+      "from": "assets/logisticspipes/pipes/provider.png",
       "fallback": "minecraft:block/lime_terracotta"
     },
     "terminal": {
       "type": "image",
-      "from": "assets/lp_request.png",
+      "from": "assets/logisticspipes/pipes/request.png",
       "fallback": "minecraft:block/light_blue_terracotta"
     }
   },
