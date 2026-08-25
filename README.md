@@ -4,6 +4,9 @@ Um porte da ideia central do [Logistic Pipes](https://github.com/rs485/logistics
 [Mine Loader](https://github.com/MarcosBrendonDePaula/mine-loader): uma rede de canos que encontra
 e entrega itens, escrita **sem uma linha de Java** — só `mod.json` e Lua.
 
+É o **primeiro mod migrado** para aquele loader, e não por acaso: o Logistic Pipes parou de ser
+atualizado pelo motivo exato que o loader existe para resolver.
+
 ## Por que portar um mod que parou
 
 O Logistic Pipes não parou por falta de ideia. Acompanhar as versões do Minecraft em Java custa
