@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "id": "logistica",
+  "name": "Logistica",
+  "version": "0.1.0",
+  "description": "Rede de canos que encontra e entrega itens, no espirito do Logistic Pipes: um terminal pergunta a rede o que existe, e um provedor tira do bau ao lado e manda.",
+  "entrypoint": "main.lua",
+  "authors": [
+    "Minecraft Lua Loader"
+  ],
+  "icon": "assets/terminal.png",
+  "permissions": [
+    "chat.send",
+    "player.read",
+    "player.menu",
+    "player.inventory",
+    "world.read",
+    "world.containers",
+    "server.command.register"
+  ],
+  "creative_tab": {
+    "register": true,
+    "id": "main",
+    "name": "Logistica",
+    "icon": "logistica:terminal"
+  },
+  "resources": {
+    "cano": {
+      "type": "image",
+      "from": "assets/cano.png",
+      "fallback": "minecraft:block/iron_block"
+    },
+    "provedor": {
+      "type": "image",
+      "from": "assets/provedor.png",
+      "fallback": "minecraft:block/lime_terracotta"
+    },
+    "terminal": {
+      "type": "image",
+      "from": "assets/terminal.png",
+      "fallback": "minecraft:block/light_blue_terracotta"
+    }
+  },
+  "blocks": [
+    {
+      "id": "cano",
+      "name": "Cano Logistico",
+      "material": {
+        "sound": "metal"
+      },
+      "settings": {
+        "hardness": 0.8,
+        "resistance": 1.0
+      },
+      "render": {
+        "textures": {
+          "all": "@cano"
+        }
+      },
+      "shape": {
+        "collision": "pillar",
+        "outline": "pillar",
+        "visual": "pillar"
+      }
+    },
+    {
+      "id": "provedor",
+      "name": "Cano Provedor",
+      "material": {
+        "sound": "metal"
+      },
+      "settings": {
+        "hardness": 0.8,
+        "resistance": 1.0
+      },
+      "render": {
+        "textures": {
+          "all": "@provedor"
+        }
+      },
+      "shape": {
+        "collision": "pillar",
+        "outline": "pillar",
+        "visual": "pillar"
+      }
+    },
+    {
+      "id": "terminal",
+      "name": "Terminal Logistico",
+      "material": {
+        "sound": "metal"
+      },
+      "settings": {
+        "hardness": 0.8,
+        "resistance": 1.0
+      },
+      "render": {
+        "textures": {
+          "all": "@terminal"
+        }
+      },
+      "behavior": {
+        "on_use": "scripts/terminal_usado.lua"
+      }
+    }
+  ],
+  "events": {
+    "loader_ready": "on_loader_ready"
+  }
+}
