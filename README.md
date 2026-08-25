@@ -38,6 +38,9 @@ Copiar era a alternativa, e a copia envelhece: o servidor passa a rodar contra u
 - **Item nao desaparece.** Cano quebrado no meio da viagem descarrega no inventario vizinho, e bau
   de destino cheio segura a carga em fila.
 
+O plano completo da migração — o que está portado, o que falta e em que ordem — está em
+[`MIGRACAO.md`](MIGRACAO.md).
+
 ## O que falta
 
 `supplier`, `satellite`, `crafting` e os modulos de `chassis`. O `crafting` e o unico que precisa de

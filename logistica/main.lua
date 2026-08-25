@@ -27,6 +27,7 @@ local rede = mod.import("lib/rede.lua")
 local viagem = mod.import("lib/viagem.lua")
 local abastecimento = mod.import("lib/abastecimento.lua")
 local autoteste = mod.import("lib/autoteste.lua")
+local fabricacao = mod.import("lib/fabricacao.lua")
 local viagem = mod.import("lib/viagem.lua")
 
 mod.screen("terminal", terminal.evento)
@@ -41,6 +42,7 @@ mod.screen("terminal", terminal.evento)
 --   /mod logistica pedir <x> <y> <z> <item>               entrega, como o botao da tela faria
 --   /mod logistica satelite <x> <y> <z> <nome>            da nome a um satelite
 --   /mod logistica abastecer <x> <y> <z> <item> <qtd>     mantem um bau em estoque
+--   /mod logistica fabricar <x> <y> <z> <item> [qtd]      pede a rede que fabrique
 --   /mod logistica autoteste [caso]                       roda a bateria de verificacao
 mod.command("logistica", function(ctx)
     local args = ctx.argv or {}
@@ -92,6 +94,39 @@ mod.command("logistica", function(ctx)
         end
         abastecimento.configurar_abastecedor(ctx, x, y, z, item, alvo)
         ctx.log.info("LOGISTICA abastecedor=" .. item .. " alvo=" .. alvo)
+        return
+    end
+
+    if acao == "fabricar" then
+        local item = args[5]
+        local quantidade = tonumber(args[6]) or 1
+        if item == nil then
+            ctx.log.warn("uso: /mod logistica fabricar <x> <y> <z> <item> [quantidade]")
+            return
+        end
+
+        local nos = rede.varrer(ctx, x, y, z)
+        local destino = { x = x, y = y, z = z, bloco = ctx.server.get_block(x, y, z) }
+
+        -- Planejar antes de mexer em qualquer coisa: um pedido que descobre no meio que falta um
+        -- ingrediente ja consumiu os outros, e a base fica com material picado e nada pronto.
+        local atendido, motivo, plano = fabricacao.planejar(ctx, nos, item, quantidade)
+
+        if atendido < quantidade then
+            ctx.log.warn("LOGISTICA nao da para fazer " .. quantidade .. " " .. item
+                         .. ": " .. tostring(motivo))
+            return
+        end
+
+        ctx.log.info("LOGISTICA plano para " .. quantidade .. " " .. item .. ": "
+                     .. #plano.fabricar .. " passo(s)")
+        for _, passo in ipairs(plano.fabricar) do
+            ctx.log.info("LOGISTICA   fazer " .. (passo.lotes * passo.por_lote) .. " "
+                         .. passo.item .. " em " .. passo.lotes .. " lote(s)")
+        end
+
+        local pronto, erro = fabricacao.executar(ctx, nos, plano, destino)
+        ctx.log.info("LOGISTICA fabricado=" .. pronto .. " motivo=" .. tostring(erro))
         return
     end
 

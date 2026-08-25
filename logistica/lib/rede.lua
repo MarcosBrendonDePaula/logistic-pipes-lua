@@ -14,6 +14,7 @@ local CANOS = {
     ["logistica:terminal"] = true,
     ["logistica:abastecedor"] = true,
     ["logistica:satelite"] = true,
+    ["logistica:fabricador"] = true,
 }
 
 -- O quanto a rede pode crescer antes de o loader desistir de varre-la.

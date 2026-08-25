@@ -15,6 +15,7 @@
 local rede = mod.import("lib/rede.lua")
 local viagem = mod.import("lib/viagem.lua")
 local abastecimento = mod.import("lib/abastecimento.lua")
+local fabricacao = mod.import("lib/fabricacao.lua")
 
 -- Onde a bateria monta as redes.
 --
@@ -204,6 +205,96 @@ TESTES.item_nao_desaparece = function(ctx)
         end
     end
     exigir(total == 10, "deveriam existir 10 esmeraldas em algum lugar, existem " .. total)
+end
+
+TESTES.fabricar_o_que_falta = function(ctx)
+    local r = montar(ctx, 12, 2, "logistica:fabricador")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:oak_log", 16)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    -- A rede nao tem tabua, mas sabe fazer: uma tora vira quatro.
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:oak_planks", 8)
+    exigir(atendido == 8, "deveria dar para fazer 8 tabuas, deu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+    exigir(#plano.fabricar == 1, "um passo bastava, veio " .. #plano.fabricar)
+    exigir(plano.fabricar[1].item == "minecraft:oak_planks", "o passo deveria ser da tabua")
+    exigir(plano.fabricar[1].lotes == 2, "oito tabuas sao dois lotes de quatro, veio "
+                                         .. plano.fabricar[1].lotes)
+
+    -- E o que sai do mundo sao duas toras, e nao as tabuas: elas nao existem em lugar nenhum.
+    exigir(plano.retirar["minecraft:oak_log"] == 2,
+           "deveriam sair 2 toras, saem " .. tostring(plano.retirar["minecraft:oak_log"]))
+    exigir(plano.retirar["minecraft:oak_planks"] == nil,
+           "tabua nao pode sair do estoque: ela esta sendo feita")
+
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 8, "deveriam ficar prontas 8 tabuas, ficaram " .. pronto)
+    exigir(quanto(ctx, r.destino, "minecraft:oak_planks") == 8, "as tabuas deveriam estar no bau")
+    exigir(quanto(ctx, r.origem, "minecraft:oak_log") == 14, "deveriam sobrar 14 toras")
+
+    desmontar(ctx, 12, 2)
+end
+
+TESTES.fabricar_em_cascata = function(ctx)
+    local r = montar(ctx, 14, 2, "logistica:fabricador")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:oak_log", 16)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    -- O caso que a arvore existe para resolver: a bancada precisa de tabuas, que tambem nao
+    -- existem, e que por sua vez precisam de toras -- que existem. Dois niveis.
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:crafting_table", 1)
+    exigir(atendido == 1, "deveria dar para fazer a bancada: " .. tostring(motivo))
+    exigir(#plano.fabricar == 2, "dois passos: tabua e bancada, veio " .. #plano.fabricar)
+
+    -- Do fundo para a raiz: quem usa vem depois de quem produz. Invertido, a bancada tentaria ser
+    -- feita antes de as tabuas existirem.
+    exigir(plano.fabricar[1].item == "minecraft:oak_planks", "a tabua vem primeiro")
+    exigir(plano.fabricar[2].item == "minecraft:crafting_table", "e a bancada depois")
+
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 1, "deveria ficar pronta 1 bancada, ficou " .. pronto)
+    exigir(quanto(ctx, r.destino, "minecraft:crafting_table") == 1, "a bancada deveria estar no bau")
+
+    -- E a materia se conserva: uma tora entrou na conta, quinze sobraram.
+    exigir(quanto(ctx, r.origem, "minecraft:oak_log") == 15,
+           "deveriam sobrar 15 toras, sobraram " .. quanto(ctx, r.origem, "minecraft:oak_log"))
+
+    desmontar(ctx, 14, 2)
+end
+
+TESTES.fabricar_sem_material_nao_consome = function(ctx)
+    local r = montar(ctx, 16, 2, "logistica:fabricador")
+    -- Uma tora so: nao chega para uma bancada, que precisa de quatro tabuas.
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:oak_log", 1)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    local atendido, motivo = fabricacao.planejar(ctx, nos, "minecraft:crafting_table", 8)
+
+    exigir(atendido < 8, "nao deveria dar para fazer 8 bancadas com uma tora")
+    exigir(motivo ~= nil, "um pedido recusado precisa dizer por que")
+
+    -- **Nada foi tirado do lugar.** Um pedido que descobre no meio que falta ingrediente ja
+    -- consumiu os outros, e a base fica com material picado e nada pronto. E por isso que planejar
+    -- e executar sao separados.
+    exigir(quanto(ctx, r.origem, "minecraft:oak_log") == 1,
+           "a tora deveria continuar la, planejar nao pode consumir nada")
+
+    desmontar(ctx, 16, 2)
+end
+
+TESTES.fabricar_sem_receita_avisa = function(ctx)
+    local r = montar(ctx, 18, 2, "logistica:fabricador")
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    -- Minerio nao se fabrica, se cava. A mensagem precisa dizer isso, e nao ficar em silencio.
+    local atendido, motivo = fabricacao.planejar(ctx, nos, "minecraft:diamond_ore", 1)
+    exigir(atendido == 0, "nao deveria atender")
+    exigir(motivo ~= nil and motivo:find("ninguem sabe fazer") ~= nil,
+           "o motivo deveria dizer que ninguem sabe fazer, veio " .. tostring(motivo))
+
+    desmontar(ctx, 18, 2)
 end
 
 --- Roda a bateria e escreve o resultado no log.

@@ -17,7 +17,8 @@
     "world.read",
     "world.containers",
     "server.command.register",
-    "world.write"
+    "world.write",
+    "server.read"
   ],
   "creative_tab": {
     "register": true,
@@ -59,6 +60,11 @@
       "type": "image",
       "from": "assets/logisticspipes/pipes/pipemodel.png",
       "fallback": "minecraft:block/iron_block"
+    },
+    "fabricador": {
+      "type": "image",
+      "from": "assets/logisticspipes/pipes/crafting.png",
+      "fallback": "minecraft:block/yellow_terracotta"
     }
   },
   "blocks": [
@@ -170,7 +176,8 @@
           "logistica:provedor",
           "logistica:terminal",
           "logistica:abastecedor",
-          "logistica:satelite"
+          "logistica:satelite",
+          "logistica:fabricador"
         ]
       },
       "block_data": true,
@@ -286,7 +293,8 @@
           "logistica:provedor",
           "logistica:terminal",
           "logistica:abastecedor",
-          "logistica:satelite"
+          "logistica:satelite",
+          "logistica:fabricador"
         ]
       },
       "block_data": true,
@@ -406,7 +414,8 @@
           "logistica:provedor",
           "logistica:terminal",
           "logistica:abastecedor",
-          "logistica:satelite"
+          "logistica:satelite",
+          "logistica:fabricador"
         ]
       },
       "placement": {
@@ -522,7 +531,8 @@
           "logistica:provedor",
           "logistica:terminal",
           "logistica:abastecedor",
-          "logistica:satelite"
+          "logistica:satelite",
+          "logistica:fabricador"
         ]
       },
       "block_data": true,
@@ -639,12 +649,131 @@
           "logistica:provedor",
           "logistica:terminal",
           "logistica:abastecedor",
-          "logistica:satelite"
+          "logistica:satelite",
+          "logistica:fabricador"
         ]
       },
       "block_data": true,
       "behavior": {
         "on_use": "scripts/satelite_usado.lua",
+        "on_scheduled": "scripts/cano_tique.lua"
+      }
+    },
+    {
+      "id": "fabricador",
+      "name": "Cano Fabricador",
+      "material": {
+        "sound": "metal"
+      },
+      "settings": {
+        "hardness": 0.8,
+        "resistance": 1.0,
+        "non_opaque": true
+      },
+      "render": {
+        "model": "@modelo_cano",
+        "texture": {
+          "ref": "fabricador"
+        },
+        "obj_parts": {
+          "core": [
+            {
+              "groups": [
+                "Edge_M_",
+                "Corner_M_"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ],
+          "connected": [
+            {
+              "groups": [
+                "Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ],
+          "disconnected": [
+            {
+              "groups": [
+                "Texture_Side_%s",
+                "Texture_Connector_Plate",
+                "Side_Texture_Plate"
+              ],
+              "keep_within": [
+                3,
+                3,
+                2.9,
+                13,
+                13,
+                3.1
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            },
+            {
+              "groups": [
+                "Texture_Plate_%s"
+              ],
+              "texture": {
+                "ref": "fabricador"
+              },
+              "uv_scale": 0.75,
+              "double_sided": true,
+              "expand": 1.001
+            }
+          ]
+        }
+      },
+      "shape": {
+        "cores": [
+          [
+            4,
+            4,
+            4,
+            12,
+            12,
+            12
+          ]
+        ],
+        "arms": [
+          [
+            5,
+            5,
+            0,
+            11,
+            11,
+            4
+          ],
+          [
+            4,
+            4,
+            0,
+            12,
+            12,
+            2
+          ]
+        ],
+        "connects_to": [
+          "logistica:cano",
+          "logistica:provedor",
+          "logistica:terminal",
+          "logistica:abastecedor",
+          "logistica:satelite",
+          "logistica:fabricador"
+        ]
+      },
+      "block_data": true,
+      "behavior": {
+        "on_use": "scripts/fabricador_usado.lua",
         "on_scheduled": "scripts/cano_tique.lua"
       }
     }
