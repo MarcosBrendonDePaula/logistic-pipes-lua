@@ -321,7 +321,8 @@
       },
       "block_data": true,
       "behavior": {
-        "on_scheduled": "scripts/cano_tique.lua"
+        "on_scheduled": "scripts/cano_tique.lua",
+        "on_use": "scripts/provedor_usado.lua"
       }
     },
     {
@@ -938,30 +939,24 @@
       "id": "modulo_extrator",
       "name": "Modulo Extrator",
       "description": "Tira do bau encostado e manda para quem na rede aceitar.",
-      "render": {
-        "texture": {
-          "ref": "modulo_extrator"
-        }
+      "texture": {
+        "ref": "modulo_extrator"
       }
     },
     {
       "id": "modulo_deposito",
       "name": "Modulo Deposito",
       "description": "Declara que este bau recebe um item: a rede entrega aqui.",
-      "render": {
-        "texture": {
-          "ref": "modulo_deposito"
-        }
+      "texture": {
+        "ref": "modulo_deposito"
       }
     },
     {
       "id": "modulo_abastecedor",
       "name": "Modulo Abastecedor",
       "description": "Mantem o bau encostado com uma quantidade do item.",
-      "render": {
-        "texture": {
-          "ref": "modulo_abastecedor"
-        }
+      "texture": {
+        "ref": "modulo_abastecedor"
       }
     }
   ]
