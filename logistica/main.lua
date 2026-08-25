@@ -26,6 +26,7 @@ local terminal = mod.import("lib/terminal.lua")
 local rede = mod.import("lib/rede.lua")
 local viagem = mod.import("lib/viagem.lua")
 local abastecimento = mod.import("lib/abastecimento.lua")
+local autoteste = mod.import("lib/autoteste.lua")
 local viagem = mod.import("lib/viagem.lua")
 
 mod.screen("terminal", terminal.evento)
@@ -40,9 +41,17 @@ mod.screen("terminal", terminal.evento)
 --   /mod logistica pedir <x> <y> <z> <item>               entrega, como o botao da tela faria
 --   /mod logistica satelite <x> <y> <z> <nome>            da nome a um satelite
 --   /mod logistica abastecer <x> <y> <z> <item> <qtd>     mantem um bau em estoque
+--   /mod logistica autoteste [caso]                       roda a bateria de verificacao
 mod.command("logistica", function(ctx)
     local args = ctx.argv or {}
     local acao = ctx.subcommand or "ver"
+
+    -- A bateria nao precisa de coordenadas: ela monta as proprias redes num canto do mundo. Por
+    -- isso ela vem antes da leitura dos argumentos, que exige x, y e z.
+    if acao == "autoteste" then
+        autoteste.rodar(ctx, args[2])
+        return
+    end
 
     local x = tonumber(args[2])
     local y = tonumber(args[3])

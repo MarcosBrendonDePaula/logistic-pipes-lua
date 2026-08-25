@@ -64,6 +64,22 @@ local function descarregar(ctx, x, y, z, carga)
         if resta <= 0 then break end
         resta = ctx.server.insert_into(alvo.x, alvo.y, alvo.z, carga.item, resta)
     end
+
+    -- Avisa o abastecedor que pediu, se foi ele o destino da rota.
+    --
+    -- Sem este aviso a pendencia dele so cresceria, e ele pararia de pedir para sempre depois da
+    -- primeira remessa. O aviso vale mesmo quando a carga saiu num desvio de emergencia: o item
+    -- existe em algum bau, e insistir num pedido ja atendido encheria o estoque em dobro.
+    --
+    -- O `import` fica aqui dentro de proposito: abastecimento importa este modulo, e importa-lo no
+    -- topo fecharia um ciclo.
+    local entregue = carga.count - resta
+    if entregue > 0 then
+        local fim = carga.rota[#carga.rota]
+        if fim ~= nil and ctx.server.get_block(fim.x, fim.y, fim.z) == "logistica:abastecedor" then
+            mod.import("lib/abastecimento.lua").chegou(ctx, fim.x, fim.y, fim.z, carga.item, entregue)
+        end
+    end
     return resta
 end
 

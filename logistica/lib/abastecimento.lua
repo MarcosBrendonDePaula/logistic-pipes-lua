@@ -18,6 +18,13 @@ local viagem = mod.import("lib/viagem.lua")
 -- a viagem em si ja leva mais que isso.
 local INTERVALO = 100
 
+-- Quantas conferidas sem novidade antes de dar uma remessa por perdida.
+--
+-- Dez, ou quase um minuto. Uma carga pode demorar se a rede for longa ou estiver congestionada, e
+-- desistir cedo faria o abastecedor pedir em dobro -- exatamente o que a pendencia existe para
+-- evitar.
+local PACIENCIA = 10
+
 -- ------------------------------------------------------------------ configuracao por posicao
 
 --- Le a configuracao daquele cano.
@@ -84,9 +91,14 @@ end
 
 --- Quanto falta para o bau encostado chegar ao alvo.
 --
--- Conta o que ja esta a caminho. Sem isso o abastecedor pediria de novo a cada conferida enquanto a
--- primeira remessa ainda viaja, e o bau acabaria com varias vezes o alvo -- o defeito classico de
--- um abastecedor ingenuo, e o motivo de o original rastrear pedidos em transito.
+-- Conta o que ja esta a caminho, senao o abastecedor pediria de novo a cada conferida enquanto a
+-- primeira remessa ainda viaja, e o bau acabaria com varias vezes o alvo.
+--
+-- **O que esta a caminho e um numero guardado aqui, e nao uma varredura.** A primeira versao
+-- percorria a rede inteira lendo os dados de cada cano para somar as cargas com este destino, e
+-- isso estourou o orcamento de 20 ms na propria bateria de testes. Um abastecedor que custa uma
+-- varredura completa a cada cinco segundos nao escala para uma base de verdade -- e o original
+-- rastreia os pedidos justamente por isso.
 local function quanto_falta(ctx, no, config)
     local alvo = tonumber(config.alvo) or 0
     if config.item == nil or alvo <= 0 then return 0 end
@@ -98,20 +110,24 @@ local function quanto_falta(ctx, no, config)
         end
     end
 
-    -- O que esta viajando pela rede com este cano como destino ja conta como chegado.
-    local a_caminho = 0
-    for _, cano in ipairs(rede.varrer(ctx, no.x, no.y, no.z)) do
-        for _, carga in ipairs(viagem.cargas_em(ctx, cano.x, cano.y, cano.z)) do
-            local fim = carga.rota[#carga.rota]
-            if carga.item == config.item and fim ~= nil
-               and fim.x == no.x and fim.y == no.y and fim.z == no.z then
-                a_caminho = a_caminho + carga.count
-            end
-        end
-    end
-
-    local falta = alvo - tem - a_caminho
+    local falta = alvo - tem - (tonumber(config.pendente) or 0)
     return falta > 0 and falta or 0
+end
+
+--- Registra que uma remessa chegou a este abastecedor.
+--
+-- Chamada pela viagem quando a carga e descarregada. Sem isto a pendencia so cresceria, e o
+-- abastecedor pararia de pedir para sempre depois da primeira remessa.
+local function chegou(ctx, x, y, z, item, quantidade)
+    local config, dados = configuracao(ctx, x, y, z)
+    if config.item ~= item then return end
+
+    local pendente = (tonumber(config.pendente) or 0) - quantidade
+    config.pendente = pendente > 0 and pendente or 0
+    config.paradas = 0
+
+    dados.config = config
+    ctx.server.set_block_data(x, y, z, dados)
 end
 
 --- O tique do abastecedor: confere o bau e pede o que falta.
@@ -119,7 +135,7 @@ end
 -- Devolve quanto pediu, para quem chama poder registrar. Zero e o caso normal -- um abastecedor em
 -- dia nao faz nada, e continua conferindo.
 local function conferir(ctx, x, y, z)
-    local config = configuracao(ctx, x, y, z)
+    local config, dados = configuracao(ctx, x, y, z)
     if config.item == nil then return 0 end
 
     local no = { x = x, y = y, z = z, bloco = ctx.server.get_block(x, y, z) }
@@ -130,7 +146,23 @@ local function conferir(ctx, x, y, z)
         local nos = rede.varrer(ctx, x, y, z)
         -- O abastecedor e o destino: a entrega vem dos provedores da rede para o bau dele.
         pedido = viagem.entregar(ctx, nos, no, config.item, falta)
+        config.pendente = (tonumber(config.pendente) or 0) + pedido
+        config.paradas = 0
+    elseif (tonumber(config.pendente) or 0) > 0 then
+        -- A pendencia esta segurando o pedido. Se ela nao andar por muitas conferidas, a remessa se
+        -- perdeu -- alguem quebrou o cano com a carga dentro, e os dados dela foram junto. Sem esta
+        -- saida o abastecedor ficaria mudo para sempre esperando algo que nao vem mais.
+        config.paradas = (tonumber(config.paradas) or 0) + 1
+        if config.paradas >= PACIENCIA then
+            config.pendente = 0
+            config.paradas = 0
+            ctx.log.warn("Abastecedor em " .. x .. "," .. y .. "," .. z
+                         .. " desistiu de uma remessa que nao chegou")
+        end
     end
+
+    dados.config = config
+    ctx.server.set_block_data(x, y, z, dados)
 
     -- Reagenda sempre, porque um abastecedor existe justamente para continuar conferindo. E a
     -- excecao a regra do cano comum, que para de pedir tique quando esvazia.
@@ -146,5 +178,6 @@ return {
     achar_satelite = achar_satelite,
     configurar_abastecedor = configurar_abastecedor,
     quanto_falta = quanto_falta,
+    chegou = chegou,
     conferir = conferir,
 }
