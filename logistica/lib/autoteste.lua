@@ -297,6 +297,82 @@ TESTES.fabricar_sem_receita_avisa = function(ctx)
     desmontar(ctx, 18, 2)
 end
 
+TESTES.padrao_de_bancada_diz_o_que_sai = function(ctx)
+    -- O arranjo decide, e nao o nome do produto. Uma tabua no meio da coluna esquerda nao faz nada;
+    -- duas tabuas empilhadas fazem uma vara. E o mesmo par de itens em posicoes diferentes.
+    local vazio = { "", "", "", "", "", "", "", "", "" }
+    exigir(ctx.server.crafting_result(vazio) == nil, "bancada vazia nao produz nada")
+
+    -- Uma tora sozinha vira quatro tabuas: receita sem formato, e a posicao nao importa. Vale como
+    -- caso porque prova que o casamento e o do jogo -- um comparador escrito no mod saberia so as
+    -- receitas com formato, e responderia nil aqui.
+    local tora = { "", "", "", "", "minecraft:oak_log", "", "", "", "" }
+    local tabuas = ctx.server.crafting_result(tora)
+    exigir(tabuas ~= nil and tabuas.item == "minecraft:oak_planks",
+           "uma tora sozinha deveria fazer tabua, fez " .. tostring(tabuas and tabuas.item))
+
+    local vara = { "minecraft:oak_planks", "", "",
+                   "minecraft:oak_planks", "", "",
+                   "", "", "" }
+    local saida = ctx.server.crafting_result(vara)
+    exigir(saida ~= nil, "duas tabuas empilhadas deveriam fazer vara")
+    exigir(saida.item == "minecraft:stick",
+           "deveria sair vara, saiu " .. tostring(saida and saida.item))
+    exigir(saida.count == 4, "uma receita de vara rende 4, rendeu " .. tostring(saida.count))
+end
+
+TESTES.fabricar_pelo_padrao = function(ctx)
+    local r = montar(ctx, 20, 2, "logistica:fabricador")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:oak_log", 8)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    -- A rede so tem tora. O padrao pede tabua, que nao existe -- e a arvore desce sozinha ate a
+    -- tora, que e o que liga o padrao ao resto do motor.
+    local padrao = { "minecraft:oak_planks", "", "",
+                     "minecraft:oak_planks", "", "",
+                     "", "", "" }
+
+    local total, motivo, plano = fabricacao.planejar_padrao(ctx, nos, padrao, 1)
+    exigir(total == 4, "um lote de vara rende 4, veio " .. total .. " (" .. tostring(motivo) .. ")")
+
+    -- Duas tabuas saem de uma tora, e e a tora que sai do bau: a tabua esta sendo feita.
+    exigir(plano.retirar["minecraft:oak_log"] == 1,
+           "deveria sair 1 tora, sai " .. tostring(plano.retirar["minecraft:oak_log"]))
+    exigir(plano.retirar["minecraft:oak_planks"] == nil,
+           "tabua nao pode sair do estoque: ela esta sendo feita")
+
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 4, "deveriam ficar prontas 4 varas, ficaram " .. pronto)
+    exigir(quanto(ctx, r.destino, "minecraft:stick") == 4, "as varas deveriam estar no bau")
+    exigir(quanto(ctx, r.origem, "minecraft:oak_log") == 7, "deveriam sobrar 7 toras")
+
+    desmontar(ctx, 20, 2)
+end
+
+TESTES.padrao_que_nao_faz_nada_nao_consome = function(ctx)
+    local r = montar(ctx, 22, 2, "logistica:fabricador")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:oak_log", 4)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    -- Terra no meio da bancada nao e receita de nada. Recusar antes de planejar e o que impede o
+    -- pedido de consumir material para descobrir isso no fim.
+    --
+    -- Terra, e nao tora: uma tora sozinha vira quatro tabuas, porque receita sem formato ignora a
+    -- posicao. Foi o que este caso pegou na primeira escrita, e vale registrar -- "esse arranjo nao
+    -- faz nada" e menos comum do que parece.
+    local padrao = { "", "", "", "", "minecraft:dirt", "", "", "", "" }
+    local total, motivo = fabricacao.planejar_padrao(ctx, nos, padrao, 1)
+
+    exigir(total == 0, "nao deveria produzir nada")
+    exigir(motivo ~= nil and motivo:find("nao faz nada") ~= nil,
+           "o motivo deveria dizer que o arranjo nao faz nada, veio " .. tostring(motivo))
+    exigir(quanto(ctx, r.origem, "minecraft:oak_log") == 4, "nenhuma tora podia ter saido")
+
+    desmontar(ctx, 22, 2)
+end
+
 --- Roda a bateria e escreve o resultado no log.
 --
 -- **Um caso por tique, e nao todos de uma vez.** Cada callback tem 20 ms, e a bateria inteira num

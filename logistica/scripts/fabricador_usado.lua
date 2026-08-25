@@ -1,16 +1,11 @@
--- Clicar num fabricador diz o que a rede sabe fazer a partir dali.
+-- Clicar num fabricador abre a bancada dele.
 --
--- Ele nao guarda receita: usa as do proprio jogo. Um fabricador que so soubesse fazer o que o mod
--- ensinou seria inutil num modpack, onde quase tudo vem de outro lugar.
+-- Ele nao guarda receita declarada: usa as do proprio jogo, e quem escolhe qual e o padrao que o
+-- jogador monta. Um fabricador que so soubesse fazer o que o mod ensinou seria inutil num modpack,
+-- onde quase tudo vem de outro lugar.
 
-local rede = mod.import("lib/rede.lua")
+local fabricador = mod.import("lib/fabricador.lua")
 
 return function(ctx)
-    local nos = rede.varrer(ctx, ctx.block.x, ctx.block.y, ctx.block.z)
-    local itens = rede.estoque(ctx, nos)
-
-    ctx.player.send_message("Fabricador: a rede tem " .. #itens .. " item(ns) em estoque.")
-    ctx.player.send_message("Use /mod logistica fabricar " .. ctx.block.x .. " " .. ctx.block.y
-                            .. " " .. ctx.block.z .. " <item> [quantidade]")
-    return false
+    return fabricador.abrir(ctx)
 end

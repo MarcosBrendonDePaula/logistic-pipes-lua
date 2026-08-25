@@ -180,6 +180,83 @@ local function planejar(ctx, nos, item, quantidade, estado)
     return quantidade, nil, estado
 end
 
+--- Os ingredientes de um padrao de nove slots, somados por item.
+--
+-- Um padrao e a bancada como o jogador a montaria: nove posicoes, vazias ou com um item. Somar por
+-- item e o que liga o padrao ao resto -- dali para baixo e o mesmo pedido de sempre.
+local function ingredientes_do_padrao(padrao)
+    local total = {}
+    local ordem = {}
+
+    for slot = 1, 9 do
+        local item = padrao[slot]
+        if item ~= nil and item ~= "" then
+            if total[item] == nil then
+                total[item] = 0
+                ordem[#ordem + 1] = item
+            end
+            total[item] = total[item] + 1
+        end
+    end
+
+    local lista = {}
+    for _, item in ipairs(ordem) do
+        lista[#lista + 1] = { item = item, count = total[item] }
+    end
+    return lista
+end
+
+--- Planeja a partir de um padrao montado a mao, e nao de uma receita escolhida pelo produto.
+--
+-- E a diferenca entre o cano de fabricacao do original e um botao de "faca isto": com o padrao, o
+-- jogador decide **qual** receita usar. `planejar` pega `receitas[1]` do jogo, e para um item com
+-- varias receitas -- tabua de seis madeiras diferentes, pedra de duas -- a primeira raramente e a
+-- que a base tem material para fazer.
+--
+-- Quem diz o que sai e o jogo, por `crafting_result`: a mesma busca que a bancada faz. Um
+-- casamento escrito aqui saberia so as receitas com formato, e ficaria devendo as de tag e as que
+-- outro mod define em codigo.
+local function planejar_padrao(ctx, nos, padrao, lotes)
+    lotes = math.max(1, lotes or 1)
+
+    local saida = ctx.server.crafting_result(padrao)
+    if saida == nil then
+        return 0, "esse arranjo nao faz nada", nil
+    end
+
+    local ingredientes = ingredientes_do_padrao(padrao)
+    if #ingredientes == 0 then
+        return 0, "o padrao esta vazio", nil
+    end
+
+    -- Os ingredientes viram pedidos comuns, pelas mesmas tres regras: o que existe, o que ja foi
+    -- planejado, o que da para fabricar. E o que faz um padrao de bancada puxar a arvore inteira --
+    -- pedir uma porta com o padrao certo derruba a arvore ate a tora.
+    local estado = { reservado = {}, fabricar = {}, retirar = {}, nos = 0, profundidade = 1 }
+
+    for _, ingrediente in ipairs(ingredientes) do
+        local precisa = ingrediente.count * lotes
+        local atendido, motivo = planejar(ctx, nos, ingrediente.item, precisa, estado)
+
+        if atendido < precisa then
+            -- Um ramo que nao fecha derruba o pedido inteiro, e de proposito: comecar e parar no
+            -- meio consome os outros ingredientes e nao produz nada.
+            return 0, motivo or ("falta " .. ingrediente.item), nil
+        end
+    end
+
+    -- O passo do proprio padrao vai por ultimo: quem usa vem depois de quem produz.
+    estado.fabricar[#estado.fabricar + 1] = {
+        item = saida.item,
+        lotes = lotes,
+        por_lote = saida.count,
+        ingredientes = ingredientes,
+        padrao = true,
+    }
+
+    return lotes * saida.count, nil, estado
+end
+
 --- Executa um plano ja resolvido.
 --
 -- Devolve quanto ficou pronto. Roda depois de `planejar`, e nao junto: separar as duas e o que
@@ -255,6 +332,8 @@ end
 
 return {
     executar = executar,
+    planejar_padrao = planejar_padrao,
+    ingredientes_do_padrao = ingredientes_do_padrao,
     PROFUNDIDADE = PROFUNDIDADE,
     MAX_NOS = MAX_NOS,
     receitas_de = receitas_de,

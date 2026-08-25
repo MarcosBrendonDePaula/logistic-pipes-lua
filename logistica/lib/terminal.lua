@@ -155,6 +155,15 @@ local function evento(ctx)
         local entregue, motivo = viagem.entregar(ctx, estado.rede or {}, estado.terminal,
                                           item, POR_PEDIDO)
 
+        -- O resultado tambem no log, e nao so no rodape da tela.
+        --
+        -- O aviso da tela e uma linha discreta embaixo de uma lista; quem clica olha para o item,
+        -- nao para o rodape. Foi assim que "pedi e nao veio nada" ficou sem resposta por uma
+        -- sessao inteira: o motivo estava escrito na tela o tempo todo, e nao havia como conferir
+        -- depois. O log guarda.
+        ctx.log.info("LOGISTICA pedido item=" .. item .. " entregue=" .. entregue
+                     .. " motivo=" .. tostring(motivo))
+
         if entregue > 0 then
             estado.aviso = "entregue: " .. entregue .. " x " .. item
                            .. (motivo and (" (" .. motivo .. ")") or "")

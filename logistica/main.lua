@@ -28,10 +28,12 @@ local viagem = mod.import("lib/viagem.lua")
 local abastecimento = mod.import("lib/abastecimento.lua")
 local autoteste = mod.import("lib/autoteste.lua")
 local fabricacao = mod.import("lib/fabricacao.lua")
+local fabricador = mod.import("lib/fabricador.lua")
 local chassi = mod.import("lib/chassi.lua")
 local viagem = mod.import("lib/viagem.lua")
 
 mod.screen("terminal", terminal.evento)
+mod.screen("fabricador", fabricador.evento)
 
 -- Um comando para conferir a rede sem estar no jogo.
 --
@@ -46,6 +48,7 @@ mod.screen("terminal", terminal.evento)
 --   /mod logistica fabricar <x> <y> <z> <item> [qtd]      pede a rede que fabrique
 --   /mod logistica modulo <x> <y> <z> <slot> <item> [qtd]  configura um slot do chassi
 --   /mod logistica estado <x> <y> <z>                     conexoes daquele cano, lado a lado
+--   /mod logistica mapa <x> <y> <z>                       a rede toda, e os canos soltos
 --   /mod logistica autoteste [caso]                       roda a bateria de verificacao
 --- Responde a quem pediu.
 --
@@ -175,6 +178,113 @@ mod.command("logistica", function(ctx)
         return
     end
 
+    if acao == "mapa" then
+        -- A rede inteira de uma vez, e o que ficou de fora dela.
+        --
+        -- O `estado` responde por um cano; para descobrir POR QUE dois trechos nao se falam, um
+        -- cano de cada vez nao serve -- a resposta esta no cano que nao aparece em lista nenhuma.
+        -- Este dump varre a rede, mostra a vizinhanca de cada no, e depois procura na caixa que
+        -- envolve tudo os canos que existem no mundo e nao entraram: sao esses os desligados.
+        local nos, cortou = rede.varrer(ctx, x, y, z)
+
+        responder(ctx, "LOGISTICA mapa a partir de " .. x .. "," .. y .. "," .. z
+                        .. " -- " .. #nos .. " cano(s)"
+                        .. (cortou and " (cortado no teto)" or ""))
+
+        local dentro = {}
+        local menor = { x = x, y = y, z = z }
+        local maior = { x = x, y = y, z = z }
+
+        for _, no in ipairs(nos) do
+            dentro[no.x .. "," .. no.y .. "," .. no.z] = true
+            if no.x < menor.x then menor.x = no.x end
+            if no.y < menor.y then menor.y = no.y end
+            if no.z < menor.z then menor.z = no.z end
+            if no.x > maior.x then maior.x = no.x end
+            if no.y > maior.y then maior.y = no.y end
+            if no.z > maior.z then maior.z = no.z end
+        end
+
+        local lados = {
+            { nome = "N", dx = 0, dy = 0, dz = -1 },
+            { nome = "S", dx = 0, dy = 0, dz = 1 },
+            { nome = "O", dx = -1, dy = 0, dz = 0 },
+            { nome = "L", dx = 1, dy = 0, dz = 0 },
+            { nome = "C", dx = 0, dy = 1, dz = 0 },
+            { nome = "B", dx = 0, dy = -1, dz = 0 },
+        }
+
+        --- Se ha inventario naquela posicao.
+        local function tem_inventario(px, py, pz)
+            for _, capacidade in ipairs(ctx.server.capabilities_at(px, py, pz)) do
+                if capacidade == "items" then return true end
+            end
+            return false
+        end
+
+        -- Uma linha por cano. O papel de cada um vem junto: provedor e terminal sao os dois que
+        -- decidem se um pedido funciona, e procura-los na lista inteira e o que se estava fazendo
+        -- a mao.
+        for _, no in ipairs(nos) do
+            local papel = string.gsub(no.bloco, "^logistica:", "")
+            local linha = "  " .. no.x .. "," .. no.y .. "," .. no.z .. " " .. papel .. " ["
+
+            for _, lado in ipairs(lados) do
+                local vx, vy, vz = no.x + lado.dx, no.y + lado.dy, no.z + lado.dz
+                if dentro[vx .. "," .. vy .. "," .. vz] then
+                    linha = linha .. lado.nome
+                elseif tem_inventario(vx, vy, vz) then
+                    linha = linha .. string.lower(lado.nome)
+                else
+                    linha = linha .. "-"
+                end
+            end
+
+            responder(ctx, linha .. "]")
+        end
+
+        responder(ctx, "LOGISTICA maiuscula=cano da rede, minuscula=inventario, tracinho=nada")
+
+        -- Agora os canos que existem por perto e nao entraram na rede.
+        --
+        -- A caixa cresce um bloco para cada lado porque um cano vizinho da caixa e justamente o
+        -- caso interessante: ele encosta na rede e mesmo assim nao entrou.
+        local volume = (maior.x - menor.x + 3) * (maior.y - menor.y + 3) * (maior.z - menor.z + 3)
+
+        -- O teto existe pelo orcamento de 20 ms do callback: cada posicao e uma leitura de bloco,
+        -- e uma rede espalhada geraria uma caixa enorme quase toda vazia.
+        if volume > 4096 then
+            responder(ctx, "LOGISTICA area grande demais (" .. volume
+                            .. " blocos) para procurar cano solto", true)
+            return
+        end
+
+        local soltos = 0
+        for px = menor.x - 1, maior.x + 1 do
+            for py = menor.y - 1, maior.y + 1 do
+                for pz = menor.z - 1, maior.z + 1 do
+                    if not dentro[px .. "," .. py .. "," .. pz]
+                       and rede.e_cano(ctx, px, py, pz) then
+                        soltos = soltos + 1
+                        if soltos <= 20 then
+                            local papel = string.gsub(ctx.server.get_block(px, py, pz),
+                                                      "^logistica:", "")
+                            responder(ctx, "  SOLTO " .. px .. "," .. py .. "," .. pz
+                                            .. " " .. papel, true)
+                        end
+                    end
+                end
+            end
+        end
+
+        if soltos == 0 then
+            responder(ctx, "LOGISTICA nenhum cano solto na area -- a rede e tudo que ha aqui")
+        else
+            responder(ctx, "LOGISTICA " .. soltos .. " cano(s) fora da rede"
+                            .. (soltos > 20 and " (mostrando 20)" or ""), true)
+        end
+        return
+    end
     if acao == "modulo" then
         local slot = tonumber(args[5])
         local item = args[6]
@@ -243,8 +353,8 @@ mod.command("logistica", function(ctx)
 
         local entregue, motivo = viagem.entregar(ctx, nos, { x = x, y = y, z = z },
                                                item, rede.POR_PEDIDO)
-        ctx.log.info("LOGISTICA entregue=" .. entregue .. " item=" .. item
-                     .. " motivo=" .. tostring(motivo))
+        responder(ctx, "LOGISTICA entregue=" .. entregue .. " item=" .. item
+                       .. " motivo=" .. tostring(motivo), entregue == 0)
         return
     end
 
