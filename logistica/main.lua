@@ -46,6 +46,19 @@ mod.screen("terminal", terminal.evento)
 --   /mod logistica fabricar <x> <y> <z> <item> [qtd]      pede a rede que fabrique
 --   /mod logistica modulo <x> <y> <z> <slot> <item> [qtd]  configura um slot do chassi
 --   /mod logistica autoteste [caso]                       roda a bateria de verificacao
+--- Responde a quem pediu.
+--
+-- `ctx.log` escreve no log do servidor, e quem digitou o comando no jogo nao ve nada -- foi
+-- exatamente assim que os comandos deste mod pareceram nao funcionar: eles rodavam, e a resposta
+-- ia para um arquivo que ninguem estava olhando.
+--
+-- O log continua recebendo, porque o comando tambem e usado pelo console do servidor, onde nao ha
+-- jogador nenhum.
+local function responder(ctx, texto, aviso)
+    if aviso then ctx.log.warn(texto) else ctx.log.info(texto) end
+    if ctx.player ~= nil then ctx.player.send_message(texto) end
+end
+
 mod.command("logistica", function(ctx)
     local args = ctx.argv or {}
     local acao = ctx.subcommand or "ver"
@@ -62,7 +75,7 @@ mod.command("logistica", function(ctx)
     local z = tonumber(args[4])
 
     if x == nil or y == nil or z == nil then
-        ctx.log.warn("uso: /mod logistica ver|pedir|satelite|abastecer <x> <y> <z> [...]")
+        responder(ctx, "uso: /mod logistica ver|pedir|satelite|abastecer <x> <y> <z> [...]", true)
         return
     end
 
@@ -71,15 +84,15 @@ mod.command("logistica", function(ctx)
     if acao == "satelite" then
         local nome = args[5]
         if nome == nil then
-            ctx.log.warn("uso: /mod logistica satelite <x> <y> <z> <nome>")
+            responder(ctx, "uso: /mod logistica satelite <x> <y> <z> <nome>", true)
             return
         end
         if ctx.server.get_block(x, y, z) ~= "logistica:satelite" then
-            ctx.log.warn("LOGISTICA nao ha satelite em " .. x .. "," .. y .. "," .. z)
+            responder(ctx, "LOGISTICA nao ha satelite em " .. x .. "," .. y .. "," .. z, true)
             return
         end
         abastecimento.nomear_satelite(ctx, x, y, z, nome)
-        ctx.log.info("LOGISTICA satelite=" .. nome .. " em " .. x .. "," .. y .. "," .. z)
+        responder(ctx, "LOGISTICA satelite=" .. nome .. " em " .. x .. "," .. y .. "," .. z)
         return
     end
 
@@ -87,15 +100,15 @@ mod.command("logistica", function(ctx)
         local item = args[5]
         local alvo = tonumber(args[6])
         if item == nil or alvo == nil then
-            ctx.log.warn("uso: /mod logistica abastecer <x> <y> <z> <item> <quantidade>")
+            responder(ctx, "uso: /mod logistica abastecer <x> <y> <z> <item> <quantidade>", true)
             return
         end
         if ctx.server.get_block(x, y, z) ~= "logistica:abastecedor" then
-            ctx.log.warn("LOGISTICA nao ha abastecedor em " .. x .. "," .. y .. "," .. z)
+            responder(ctx, "LOGISTICA nao ha abastecedor em " .. x .. "," .. y .. "," .. z, true)
             return
         end
         abastecimento.configurar_abastecedor(ctx, x, y, z, item, alvo)
-        ctx.log.info("LOGISTICA abastecedor=" .. item .. " alvo=" .. alvo)
+        responder(ctx, "LOGISTICA abastecedor=" .. item .. " alvo=" .. alvo)
         return
     end
 
@@ -105,11 +118,11 @@ mod.command("logistica", function(ctx)
         local alvo = tonumber(args[7])
 
         if slot == nil or item == nil then
-            ctx.log.warn("uso: /mod logistica modulo <x> <y> <z> <slot> <item> [quantidade]")
+            responder(ctx, "uso: /mod logistica modulo <x> <y> <z> <slot> <item> [quantidade]", true)
             return
         end
         if ctx.server.get_block(x, y, z) ~= "logistica:chassi" then
-            ctx.log.warn("LOGISTICA nao ha chassi em " .. x .. "," .. y .. "," .. z)
+            responder(ctx, "LOGISTICA nao ha chassi em " .. x .. "," .. y .. "," .. z, true)
             return
         end
 
@@ -126,7 +139,7 @@ mod.command("logistica", function(ctx)
         local item = args[5]
         local quantidade = tonumber(args[6]) or 1
         if item == nil then
-            ctx.log.warn("uso: /mod logistica fabricar <x> <y> <z> <item> [quantidade]")
+            responder(ctx, "uso: /mod logistica fabricar <x> <y> <z> <item> [quantidade]", true)
             return
         end
 
@@ -151,7 +164,7 @@ mod.command("logistica", function(ctx)
         end
 
         local pronto, erro = fabricacao.executar(ctx, nos, plano, destino)
-        ctx.log.info("LOGISTICA fabricado=" .. pronto .. " motivo=" .. tostring(erro))
+        responder(ctx, "LOGISTICA fabricado=" .. pronto .. " motivo=" .. tostring(erro))
         return
     end
 
@@ -161,7 +174,7 @@ mod.command("logistica", function(ctx)
     if acao == "pedir" then
         local item = args[5]
         if item == nil then
-            ctx.log.warn("falta o item: /logistica pedir <x> <y> <z> <item>")
+            responder(ctx, "falta o item: /logistica pedir <x> <y> <z> <item>", true)
             return
         end
 
@@ -175,12 +188,12 @@ mod.command("logistica", function(ctx)
     ctx.log.info("LOGISTICA canos=" .. #nos .. " itens=" .. #lista
                  .. (cortou and " (rede cortada no teto)" or ""))
     for _, entrada in ipairs(lista) do
-        ctx.log.info("LOGISTICA  " .. entrada.item .. " x" .. entrada.count)
+        responder(ctx, "LOGISTICA  " .. entrada.item .. " x" .. entrada.count)
     end
 end)
 
 local function on_loader_ready(ctx)
-    ctx.log.info("Logistica pronta: use o Terminal Logistico com um bau encostado nele.")
+    responder(ctx, "Logistica pronta: use o Terminal Logistico com um bau encostado nele.")
 end
 
 return {
