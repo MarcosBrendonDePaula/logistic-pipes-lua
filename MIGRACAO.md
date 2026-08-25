@@ -43,7 +43,7 @@ loader não faz, o caminho é abrir a lacuna lá, e não contornar aqui.
 | `terminal` | `request` | tela de pedido; entrega no baú encostado |
 | `abastecedor` | `supplier` | mantém um baú em estoque, contando o que já está a caminho |
 | `satelite` | `satellite` | endereço nomeado, para a rede se reconfigurar sem reeditar cano |
-| `fabricador` | `crafting` | **árvore de pedido**: o que falta é fabricado, e cada ingrediente vira um pedido novo |
+| `fabricador` | `crafting` | **árvore de pedido** com bancada 3×3: o padrão escolhe a receita, o que falta é fabricado, e cada ingrediente vira um pedido novo |
 
 O desenho dos seis vem do modelo do original, recortado por conexão: miolo sempre, manga no lado
 ligado, parede e decalque no lado livre.
@@ -161,9 +161,13 @@ lugares onde a versão de hoje escolheu o caminho curto, e vale saber qual foi.
 
 - **Não usa bancada de verdade.** Ele consome os ingredientes e produz o resultado. O efeito para
   quem joga é o mesmo e a conta fecha — nada aparece sem que o material tenha sumido —, mas não há
-  bancada envolvida, e o loader não tem API para isso.
-- **Sempre a primeira receita.** Um item com várias formas de ser feito usa a primeira que o jogo
-  devolve, sem escolher pela que tem ingrediente disponível. O original tenta as alternativas.
+  bancada envolvida. ~~O loader não tem API para isso.~~ **Tem**: `crafting_result(padrão)` recebe
+  nove slots e devolve o que sai, perguntando ao próprio jogo — a mesma busca que a bancada faz, com
+  e sem formato. O que falta é o cano *consumir por ali*, e não a pergunta.
+- ~~**Sempre a primeira receita.**~~ **Resolvido pelo padrão.** `planejar` continua pegando
+  `receitas[1]`, e por isso pedir pelo nome do produto ainda pode escolher a receita errada. Mas o
+  fabricador tem bancada 3×3, e `planejar_padrao` usa o arranjo que o jogador montou — que é como o
+  original resolve: quem escolhe a receita é quem tem o material.
 - **A posição da receita vale o primeiro item.** Uma posição que aceita carvão *ou* carvão vegetal
   usa carvão, mesmo que só haja o vegetal em estoque. Escolher pelo que existe exigiria consultar o
   estoque dentro do planejamento, o que multiplica o custo de montar a árvore.
