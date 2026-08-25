@@ -203,7 +203,8 @@
       },
       "block_data": true,
       "behavior": {
-        "on_scheduled": "scripts/cano_tique.lua"
+        "on_scheduled": "scripts/cano_tique.lua",
+        "on_use": "scripts/provedor_usado.lua"
       }
     },
     {
