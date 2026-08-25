@@ -65,6 +65,26 @@
       "type": "image",
       "from": "assets/logisticspipes/pipes/crafting.png",
       "fallback": "minecraft:block/yellow_terracotta"
+    },
+    "chassi": {
+      "type": "image",
+      "from": "assets/logisticspipes/pipes/chassi/chassi_mk1.png",
+      "fallback": "minecraft:block/gray_terracotta"
+    },
+    "modulo_extrator": {
+      "type": "image",
+      "from": "assets/logisticspipes/modules/extractor.png",
+      "fallback": "minecraft:item/paper"
+    },
+    "modulo_deposito": {
+      "type": "image",
+      "from": "assets/logisticspipes/modules/item_sink.png",
+      "fallback": "minecraft:item/paper"
+    },
+    "modulo_abastecedor": {
+      "type": "image",
+      "from": "assets/logisticspipes/modules/passive_supplier.png",
+      "fallback": "minecraft:item/paper"
     }
   },
   "blocks": [
@@ -177,7 +197,8 @@
           "logistica:terminal",
           "logistica:abastecedor",
           "logistica:satelite",
-          "logistica:fabricador"
+          "logistica:fabricador",
+          "logistica:chassi"
         ]
       },
       "block_data": true,
@@ -294,7 +315,8 @@
           "logistica:terminal",
           "logistica:abastecedor",
           "logistica:satelite",
-          "logistica:fabricador"
+          "logistica:fabricador",
+          "logistica:chassi"
         ]
       },
       "block_data": true,
@@ -415,7 +437,8 @@
           "logistica:terminal",
           "logistica:abastecedor",
           "logistica:satelite",
-          "logistica:fabricador"
+          "logistica:fabricador",
+          "logistica:chassi"
         ]
       },
       "placement": {
@@ -532,7 +555,8 @@
           "logistica:terminal",
           "logistica:abastecedor",
           "logistica:satelite",
-          "logistica:fabricador"
+          "logistica:fabricador",
+          "logistica:chassi"
         ]
       },
       "block_data": true,
@@ -650,7 +674,8 @@
           "logistica:terminal",
           "logistica:abastecedor",
           "logistica:satelite",
-          "logistica:fabricador"
+          "logistica:fabricador",
+          "logistica:chassi"
         ]
       },
       "block_data": true,
@@ -768,7 +793,8 @@
           "logistica:terminal",
           "logistica:abastecedor",
           "logistica:satelite",
-          "logistica:fabricador"
+          "logistica:fabricador",
+          "logistica:chassi"
         ]
       },
       "block_data": true,
@@ -776,9 +802,167 @@
         "on_use": "scripts/fabricador_usado.lua",
         "on_scheduled": "scripts/cano_tique.lua"
       }
+    },
+    {
+      "id": "chassi",
+      "name": "Chassi Logistico",
+      "material": {
+        "sound": "metal"
+      },
+      "settings": {
+        "hardness": 0.8,
+        "resistance": 1.0,
+        "non_opaque": true
+      },
+      "render": {
+        "model": "@modelo_cano",
+        "texture": {
+          "ref": "chassi"
+        },
+        "obj_parts": {
+          "core": [
+            {
+              "groups": [
+                "Edge_M_",
+                "Corner_M_"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ],
+          "connected": [
+            {
+              "groups": [
+                "Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ],
+          "disconnected": [
+            {
+              "groups": [
+                "Texture_Side_%s",
+                "Texture_Connector_Plate",
+                "Side_Texture_Plate"
+              ],
+              "keep_within": [
+                3,
+                3,
+                2.9,
+                13,
+                13,
+                3.1
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            },
+            {
+              "groups": [
+                "Texture_Plate_%s"
+              ],
+              "texture": {
+                "ref": "chassi"
+              },
+              "uv_scale": 0.75,
+              "double_sided": true,
+              "expand": 1.001
+            }
+          ]
+        }
+      },
+      "shape": {
+        "cores": [
+          [
+            4,
+            4,
+            4,
+            12,
+            12,
+            12
+          ]
+        ],
+        "arms": [
+          [
+            5,
+            5,
+            0,
+            11,
+            11,
+            4
+          ],
+          [
+            4,
+            4,
+            0,
+            12,
+            12,
+            2
+          ]
+        ],
+        "connects_to": [
+          "logistica:cano",
+          "logistica:provedor",
+          "logistica:terminal",
+          "logistica:abastecedor",
+          "logistica:satelite",
+          "logistica:fabricador",
+          "logistica:chassi"
+        ]
+      },
+      "block_data": true,
+      "behavior": {
+        "on_scheduled": "scripts/cano_tique.lua"
+      },
+      "inventory": {
+        "size": 9,
+        "title": "Chassi",
+        "open_on_use": true,
+        "allow_insert": false,
+        "allow_extract": false,
+        "drop_on_break": true
+      }
     }
   ],
   "events": {
     "loader_ready": "on_loader_ready"
-  }
+  },
+  "items": [
+    {
+      "id": "modulo_extrator",
+      "name": "Modulo Extrator",
+      "description": "Tira do bau encostado e manda para quem na rede aceitar.",
+      "render": {
+        "texture": {
+          "ref": "modulo_extrator"
+        }
+      }
+    },
+    {
+      "id": "modulo_deposito",
+      "name": "Modulo Deposito",
+      "description": "Declara que este bau recebe um item: a rede entrega aqui.",
+      "render": {
+        "texture": {
+          "ref": "modulo_deposito"
+        }
+      }
+    },
+    {
+      "id": "modulo_abastecedor",
+      "name": "Modulo Abastecedor",
+      "description": "Mantem o bau encostado com uma quantidade do item.",
+      "render": {
+        "texture": {
+          "ref": "modulo_abastecedor"
+        }
+      }
+    }
+  ]
 }

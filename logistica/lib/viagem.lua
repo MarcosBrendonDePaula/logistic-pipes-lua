@@ -209,6 +209,9 @@ return {
     entregar = entregar,
     MAX_CARGAS = MAX_CARGAS,
     cargas_em = cargas_em,
+    -- Publica porque o chassi tambem poe carga na rede, e sem isso ele teria que refazer a conta
+    -- de quanto cabe num cano -- duas contas que divergiriam no primeiro ajuste.
+    por_carga = por_carga,
     passo = passo,
     despachar = despachar,
 }

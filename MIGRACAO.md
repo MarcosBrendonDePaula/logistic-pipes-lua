@@ -52,7 +52,18 @@ ligado, parede e decalque no lado livre.
 
 ## O que falta, em ordem
 
-### 1. Chassi e módulos — o pedaço grande
+### 1. Chassi e módulos — **primeiros três feitos**
+
+O bloco existe, com nove slots, e os módulos `extrator`, `deposito` e `abastecedor` funcionam:
+um baú exporta sozinho, outro recebe, e a rede liga os dois sem ninguém pedir. Verificado no
+servidor -- 32 barras saíram de um baú e chegaram ao outro.
+
+Falta o resto da família (`quick_sort`, `terminus`, `crafter`, `active_supplier`), que são
+variações destes, e o que está em **A refinar** abaixo.
+
+O texto abaixo é o plano original, mantido porque descreve o que ainda vale para os que faltam.
+
+#### O plano
 
 No original, o `chassis` é um cano com **slots de módulo**: cada módulo dá um comportamento
 (extrair, filtrar, abastecer, ordenar), e o chassi mk1 a mk5 muda quantos cabem.
@@ -124,6 +135,51 @@ Fabric e no NeoForge; foi assim que se descobriu que `extract_from` respeitava `
 lado e não no outro.
 
 ---
+
+## A refinar
+
+O que já funciona mas está mais simples que o original. Nenhum destes bloqueia o resto — são
+lugares onde a versão de hoje escolheu o caminho curto, e vale saber qual foi.
+
+### Chassi
+
+- **Sem prioridade entre depósitos.** Quem aceita um item é o primeiro encontrado, e a varredura
+  devolve os canos em ordem de distância — então vence o mais perto. O original tem prioridade
+  explícita por módulo, e é o que permite "manda para a fundição; se ela estiver cheia, para o
+  armazém". Sem isso, dois depósitos do mesmo item são indistinguíveis.
+- **Nove slots, e não um a cinco.** A janela do jogo tem fileiras de nove, e o loader recusa
+  `inventory.size` que não seja múltiplo disso. O original tem `chassi_mk1` a `mk5`, com um a cinco
+  slots — o número é o que diferencia as variantes. Reproduzir isso exige limitar por lógica quantos
+  slots contam, ou uma tela própria em vez da janela do jogo.
+- **O módulo abastecedor não conta o que está a caminho.** O cano abastecedor conta, e foi
+  justamente esse detalhe que o impediu de encher o baú com várias vezes o alvo. O módulo repete a
+  versão ingênua e pede de novo enquanto a remessa viaja.
+- **Um módulo por slot, sem filtro composto.** O original combina filtros (por mod, por tag, por
+  encantamento) num mesmo módulo. Aqui é um item por slot, e ponto.
+
+### Fabricador
+
+- **Não usa bancada de verdade.** Ele consome os ingredientes e produz o resultado. O efeito para
+  quem joga é o mesmo e a conta fecha — nada aparece sem que o material tenha sumido —, mas não há
+  bancada envolvida, e o loader não tem API para isso.
+- **Sempre a primeira receita.** Um item com várias formas de ser feito usa a primeira que o jogo
+  devolve, sem escolher pela que tem ingrediente disponível. O original tenta as alternativas.
+- **A posição da receita vale o primeiro item.** Uma posição que aceita carvão *ou* carvão vegetal
+  usa carvão, mesmo que só haja o vegetal em estoque. Escolher pelo que existe exigiria consultar o
+  estoque dentro do planejamento, o que multiplica o custo de montar a árvore.
+- **Sem reserva entre pedidos.** Dois pedidos seguidos no mesmo tique podem planejar contando o
+  mesmo material: a reserva vale dentro de uma árvore, não entre duas.
+
+### Satélite
+
+- **Ninguém rotea por ele ainda.** Ele guarda o nome e a rede o encontra, mas nenhum outro cano usa
+  isso como destino. É a metade que falta para ele servir para o que serve no original.
+
+### Verificação
+
+- **O chassi ainda não tem caso na bateria.** Foi verificado à mão no servidor: 32 barras saíram
+  sozinhas de um baú e chegaram ao outro. Sem caso automático, ele quebra em silêncio na próxima
+  mudança — é o mesmo débito que o fabricador teve e que já foi pago.
 
 ## Débito conhecido
 

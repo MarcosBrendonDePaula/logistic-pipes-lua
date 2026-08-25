@@ -8,6 +8,7 @@
 
 local viagem = mod.import("lib/viagem.lua")
 local abastecimento = mod.import("lib/abastecimento.lua")
+local chassi = mod.import("lib/chassi.lua")
 
 return function(ctx)
     local x, y, z = ctx.block.x, ctx.block.y, ctx.block.z
@@ -16,5 +17,7 @@ return function(ctx)
 
     if ctx.block.id == "logistica:abastecedor" then
         abastecimento.conferir(ctx, x, y, z)
+    elseif ctx.block.id == "logistica:chassi" then
+        chassi.passo(ctx, x, y, z)
     end
 end

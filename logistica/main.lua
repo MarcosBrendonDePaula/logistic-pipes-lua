@@ -28,6 +28,7 @@ local viagem = mod.import("lib/viagem.lua")
 local abastecimento = mod.import("lib/abastecimento.lua")
 local autoteste = mod.import("lib/autoteste.lua")
 local fabricacao = mod.import("lib/fabricacao.lua")
+local chassi = mod.import("lib/chassi.lua")
 local viagem = mod.import("lib/viagem.lua")
 
 mod.screen("terminal", terminal.evento)
@@ -43,6 +44,7 @@ mod.screen("terminal", terminal.evento)
 --   /mod logistica satelite <x> <y> <z> <nome>            da nome a um satelite
 --   /mod logistica abastecer <x> <y> <z> <item> <qtd>     mantem um bau em estoque
 --   /mod logistica fabricar <x> <y> <z> <item> [qtd]      pede a rede que fabrique
+--   /mod logistica modulo <x> <y> <z> <slot> <item> [qtd]  configura um slot do chassi
 --   /mod logistica autoteste [caso]                       roda a bateria de verificacao
 mod.command("logistica", function(ctx)
     local args = ctx.argv or {}
@@ -94,6 +96,29 @@ mod.command("logistica", function(ctx)
         end
         abastecimento.configurar_abastecedor(ctx, x, y, z, item, alvo)
         ctx.log.info("LOGISTICA abastecedor=" .. item .. " alvo=" .. alvo)
+        return
+    end
+
+    if acao == "modulo" then
+        local slot = tonumber(args[5])
+        local item = args[6]
+        local alvo = tonumber(args[7])
+
+        if slot == nil or item == nil then
+            ctx.log.warn("uso: /mod logistica modulo <x> <y> <z> <slot> <item> [quantidade]")
+            return
+        end
+        if ctx.server.get_block(x, y, z) ~= "logistica:chassi" then
+            ctx.log.warn("LOGISTICA nao ha chassi em " .. x .. "," .. y .. "," .. z)
+            return
+        end
+
+        chassi.configurar(ctx, x, y, z, slot, { item = item, alvo = alvo })
+
+        ctx.server.schedule_block(x, y, z, chassi.INTERVALO)
+
+        ctx.log.info("LOGISTICA modulo slot=" .. slot .. " item=" .. item
+                     .. " alvo=" .. tostring(alvo))
         return
     end
 
