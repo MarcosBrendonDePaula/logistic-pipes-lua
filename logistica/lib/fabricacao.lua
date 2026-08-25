@@ -83,6 +83,32 @@ local function ingredientes_de(receita)
     return lista
 end
 
+--- Os ingredientes de um padrao de nove slots, somados por item.
+--
+-- Um padrao e a bancada como o jogador a montaria: nove posicoes, vazias ou com um item. Somar por
+-- item e o que liga o padrao ao resto -- dali para baixo e o mesmo pedido de sempre.
+local function ingredientes_do_padrao(padrao)
+    local total = {}
+    local ordem = {}
+
+    for slot = 1, 9 do
+        local item = padrao[slot]
+        if item ~= nil and item ~= "" then
+            if total[item] == nil then
+                total[item] = 0
+                ordem[#ordem + 1] = item
+            end
+            total[item] = total[item] + 1
+        end
+    end
+
+    local lista = {}
+    for _, item in ipairs(ordem) do
+        lista[#lista + 1] = { item = item, count = total[item] }
+    end
+    return lista
+end
+
 --- Quanto a rede tem daquele item, sem contar o que outro ramo ja reservou.
 local function disponivel(ctx, nos, item, reservado)
     local total = 0
@@ -112,11 +138,26 @@ local function planejar(ctx, nos, item, quantidade, estado)
         profundidade = 0,
     }
 
+    -- Os limites vem do melhor fabricador que a rede tem, e nao de uma constante.
+    --
+    -- E o que separa as tres versoes do original: pendurar um Mk3 na rede faz a arvore descer mais
+    -- fundo, sem mexer em nada mais. Lido uma vez por arvore -- perguntar a rede por no custaria
+    -- uma varredura por ingrediente.
+    if estado.limites == nil then
+        estado.limites = rede.limites_de("logistica:fabricador")
+        for _, no in ipairs(nos) do
+            local limites = rede.FABRICADORES[no.bloco]
+            if limites ~= nil and limites.profundidade > estado.limites.profundidade then
+                estado.limites = limites
+            end
+        end
+    end
+
     estado.nos = estado.nos + 1
-    if estado.nos > MAX_NOS then
+    if estado.nos > estado.limites.nos then
         return 0, "o pedido ficou grande demais para planejar", estado
     end
-    if estado.profundidade > PROFUNDIDADE then
+    if estado.profundidade > estado.limites.profundidade then
         return 0, "a receita desce fundo demais", estado
     end
 
@@ -131,19 +172,44 @@ local function planejar(ctx, nos, item, quantidade, estado)
     local falta = quantidade - doEstoque
     if falta <= 0 then return quantidade, nil, estado end
 
-    -- 2. Fabricar o que falta. Sem receita, o pedido para aqui -- e o caso comum: minerio nao se
-    -- fabrica, se cava.
-    local receitas = receitas_de(ctx, item)
-    if #receitas == 0 then
-        return doEstoque, "a rede nao tem " .. item .. " e ninguem sabe fazer", estado
+    -- 2. Fabricar o que falta. Um padrao que alguem montou na rede vence a receita do jogo.
+    --
+    -- **A ordem importa e e a razao de o modulo fabricante existir.** As receitas do jogo vem numa
+    -- ordem que o mod nao escolhe, e `receitas[1]` para um item com varias formas raramente e a que
+    -- a base tem material para fazer. Um padrao num chassi e alguem dizendo "nesta base, isto se faz
+    -- assim" -- e essa decisao tem que valer mais que a ordem do livro de receitas.
+    --
+    -- Os padroes sao lidos uma vez por arvore e guardados no estado: cada no do pedido perguntaria
+    -- a rede inteira de novo, e o orcamento de 20 ms nao tem essa folga.
+    if estado.padroes == nil then
+        estado.padroes = mod.import("lib/chassi.lua").padroes_na_rede(ctx, nos)
     end
 
-    local receita = receitas[1]
-    local porLote = receita.output ~= nil and tonumber(receita.output.count) or 1
+    local porLote, ingredientes
+    for _, oferta in ipairs(estado.padroes) do
+        if oferta.saida.item == item then
+            porLote = oferta.saida.count
+            ingredientes = ingredientes_do_padrao(oferta.padrao)
+            break
+        end
+    end
+
+    if ingredientes == nil then
+        -- Sem padrao e sem receita, o pedido para aqui -- e o caso comum: minerio nao se fabrica,
+        -- se cava.
+        local receitas = receitas_de(ctx, item)
+        if #receitas == 0 then
+            return doEstoque, "a rede nao tem " .. item .. " e ninguem sabe fazer", estado
+        end
+
+        local receita = receitas[1]
+        porLote = receita.output ~= nil and tonumber(receita.output.count) or 1
+        ingredientes = ingredientes_de(receita)
+    end
+
     if porLote < 1 then porLote = 1 end
 
     local lotes = math.ceil(falta / porLote)
-    local ingredientes = ingredientes_de(receita)
     if #ingredientes == 0 then
         return doEstoque, "a receita de " .. item .. " nao lista ingrediente", estado
     end
@@ -178,32 +244,6 @@ local function planejar(ctx, nos, item, quantidade, estado)
     end
 
     return quantidade, nil, estado
-end
-
---- Os ingredientes de um padrao de nove slots, somados por item.
---
--- Um padrao e a bancada como o jogador a montaria: nove posicoes, vazias ou com um item. Somar por
--- item e o que liga o padrao ao resto -- dali para baixo e o mesmo pedido de sempre.
-local function ingredientes_do_padrao(padrao)
-    local total = {}
-    local ordem = {}
-
-    for slot = 1, 9 do
-        local item = padrao[slot]
-        if item ~= nil and item ~= "" then
-            if total[item] == nil then
-                total[item] = 0
-                ordem[#ordem + 1] = item
-            end
-            total[item] = total[item] + 1
-        end
-    end
-
-    local lista = {}
-    for _, item in ipairs(ordem) do
-        lista[#lista + 1] = { item = item, count = total[item] }
-    end
-    return lista
 end
 
 --- Planeja a partir de um padrao montado a mao, e nao de uma receita escolhida pelo produto.
@@ -280,7 +320,7 @@ local function executar(ctx, nos, plano, destino)
 
         for _, no in ipairs(nos) do
             if total >= precisa then break end
-            if no.bloco == "logistica:provedor" then
+            if rede.e_provedor(no.bloco) then
                 for _, fonte in ipairs(rede.inventarios_em(ctx, no)) do
                     if total >= precisa then break end
                     total = total + ctx.server.extract_from(
@@ -297,7 +337,7 @@ local function executar(ctx, nos, plano, destino)
                 if quantidade > 0 then
                     for _, no in ipairs(nos) do
                         if quantidade <= 0 then break end
-                        if no.bloco == "logistica:provedor" then
+                        if rede.e_provedor(no.bloco) then
                             for _, fonte in ipairs(rede.inventarios_em(ctx, no)) do
                                 if quantidade <= 0 then break end
                                 quantidade = ctx.server.insert_into(

@@ -16,6 +16,7 @@ local rede = mod.import("lib/rede.lua")
 local viagem = mod.import("lib/viagem.lua")
 local abastecimento = mod.import("lib/abastecimento.lua")
 local fabricacao = mod.import("lib/fabricacao.lua")
+local chassi = mod.import("lib/chassi.lua")
 
 -- Onde a bateria monta as redes.
 --
@@ -371,6 +372,200 @@ TESTES.padrao_que_nao_faz_nada_nao_consome = function(ctx)
     exigir(quanto(ctx, r.origem, "minecraft:oak_log") == 4, "nenhuma tora podia ter saido")
 
     desmontar(ctx, 22, 2)
+end
+
+--- Deixa uma carga andar ate o fim da rota, tique a tique.
+--
+-- A viagem e por tique agendado, e a bateria roda dentro de um callback: sem empurrar a mao, o
+-- teste terminaria antes de o item chegar e diria que nada aconteceu.
+local function andar(ctx, nos, voltas)
+    for _ = 1, voltas do
+        for _, cano in ipairs(nos) do
+            viagem.passo(ctx, cano.x, cano.y, cano.z)
+        end
+    end
+end
+
+TESTES.chassi_extrai_e_deposita = function(ctx)
+    -- O debito que faltava: o chassi so tinha sido verificado a mao.
+    local r = montar(ctx, 24, 3, "logistica:chassi")
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    -- O chassi do fim recebe: um deposito dizendo que barra de ferro mora ali.
+    ctx.server.insert_into(r.fim.x, r.fim.y, r.fim.z, "logistica:modulo_deposito", 1)
+    chassi.configurar(ctx, r.fim.x, r.fim.y, r.fim.z, 0, { item = "minecraft:iron_ingot" })
+
+    -- E o provedor da origem vira o extrator. Um chassi por cima dele, com o bau ao lado.
+    ctx.server.set_block("logistica:chassi", r.provedor.x, r.provedor.y, r.provedor.z)
+    ctx.server.insert_into(r.provedor.x, r.provedor.y, r.provedor.z, "logistica:modulo_extrator", 1)
+    chassi.configurar(ctx, r.provedor.x, r.provedor.y, r.provedor.z, 0,
+                      { item = "minecraft:iron_ingot" })
+
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:iron_ingot", 32)
+
+    nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    chassi.passo(ctx, r.provedor.x, r.provedor.y, r.provedor.z)
+    andar(ctx, nos, 12)
+
+    -- Saiu do bau de origem sem ninguem pedir, e chegou no bau do deposito.
+    exigir(quanto(ctx, r.origem, "minecraft:iron_ingot") == 16,
+           "deveriam sobrar 16 barras na origem, sobraram "
+           .. quanto(ctx, r.origem, "minecraft:iron_ingot"))
+    exigir(quanto(ctx, r.destino, "minecraft:iron_ingot") == 16,
+           "16 barras deveriam ter chegado ao destino, chegaram "
+           .. quanto(ctx, r.destino, "minecraft:iron_ingot"))
+
+    desmontar(ctx, 24, 3)
+end
+
+TESTES.descarte_e_o_ultimo_destino = function(ctx)
+    local r = montar(ctx, 26, 3, "logistica:chassi")
+
+    -- O descarte fica no chassi do fim, e um deposito fica num cano do meio. O item tem que ir
+    -- para o deposito, e nao ser destruido -- **o descarte e o ultimo destino, nunca o primeiro**.
+    ctx.server.insert_into(r.fim.x, r.fim.y, r.fim.z, "logistica:modulo_descarte", 1)
+
+    local meio = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:chassi", meio.x, meio.y, meio.z)
+    ctx.server.set_block("minecraft:chest", meio.x + 1, meio.y, meio.z)
+    ctx.server.insert_into(meio.x, meio.y, meio.z, "logistica:modulo_deposito", 1)
+    chassi.configurar(ctx, meio.x, meio.y, meio.z, 0, { item = "minecraft:emerald" })
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    local aceita = chassi.quem_aceita(ctx, nos, "minecraft:emerald")
+
+    exigir(aceita ~= nil, "alguem deveria aceitar a esmeralda")
+    exigir(aceita.x == meio.x and aceita.z == meio.z,
+           "o deposito deveria ganhar do descarte, ganhou " .. aceita.x .. "," .. aceita.z)
+
+    -- O que ninguem quer, ai sim, vai para o descarte.
+    local sobra = chassi.quem_aceita(ctx, nos, "minecraft:dirt")
+    exigir(sobra ~= nil and sobra.x == r.fim.x and sobra.z == r.fim.z,
+           "o que ninguem aceita deveria ir para o descarte")
+
+    ctx.server.set_block("minecraft:air", meio.x + 1, meio.y, meio.z)
+    desmontar(ctx, 26, 3)
+end
+
+TESTES.fabricante_vence_a_receita_do_jogo = function(ctx)
+    local r = montar(ctx, 28, 3, "logistica:chassi")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:oak_log", 8)
+
+    -- Sem padrao, a arvore usa a receita que o jogo devolve primeiro.
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    local semPadrao = select(3, fabricacao.planejar(ctx, nos, "minecraft:stick", 4))
+
+    -- Com o padrao, quem decide e quem montou a base: uma vara de duas tabuas.
+    ctx.server.insert_into(r.fim.x, r.fim.y, r.fim.z, "logistica:modulo_fabricante", 1)
+    chassi.configurar(ctx, r.fim.x, r.fim.y, r.fim.z, 0, {
+        padrao = { "minecraft:oak_planks", "", "",
+                   "minecraft:oak_planks", "", "",
+                   "", "", "" },
+    })
+
+    local padroes = chassi.padroes_na_rede(ctx, nos)
+    exigir(#padroes == 1, "a rede deveria conhecer 1 padrao, conhece " .. #padroes)
+    exigir(padroes[1].saida.item == "minecraft:stick",
+           "o padrao deveria fazer vara, faz " .. tostring(padroes[1].saida.item))
+
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:stick", 4)
+    exigir(atendido == 4, "deveria atender 4 varas, atendeu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+    exigir(plano.retirar["minecraft:oak_log"] == 1,
+           "deveria sair 1 tora, sai " .. tostring(plano.retirar["minecraft:oak_log"]))
+    exigir(semPadrao ~= nil, "o plano sem padrao deveria existir, para a comparacao valer")
+
+    desmontar(ctx, 28, 3)
+end
+
+TESTES.extrator_entrega_no_satelite = function(ctx)
+    -- A metade que faltava do satelite: ele guardava o nome e ninguem roteava por ele.
+    local r = montar(ctx, 30, 3, "logistica:satelite")
+    abastecimento.nomear_satelite(ctx, r.fim.x, r.fim.y, r.fim.z, "forja")
+
+    -- O provedor da origem vira um chassi extrator apontado para a forja. **Nenhum deposito
+    -- existe na rede** -- e o ponto: com `quem_aceita` nada sairia, porque ninguem declarou querer
+    -- barra de ferro. O endereco e sobre o lugar, e nao sobre o item.
+    ctx.server.set_block("logistica:chassi", r.provedor.x, r.provedor.y, r.provedor.z)
+    ctx.server.insert_into(r.provedor.x, r.provedor.y, r.provedor.z, "logistica:modulo_extrator", 1)
+    chassi.configurar(ctx, r.provedor.x, r.provedor.y, r.provedor.z, 0,
+                      { item = "minecraft:iron_ingot", satelite = "forja" })
+
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:iron_ingot", 32)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    chassi.passo(ctx, r.provedor.x, r.provedor.y, r.provedor.z)
+    andar(ctx, nos, 12)
+
+    exigir(quanto(ctx, r.destino, "minecraft:iron_ingot") == 16,
+           "16 barras deveriam ter chegado ao bau da forja, chegaram "
+           .. quanto(ctx, r.destino, "minecraft:iron_ingot"))
+
+    -- Nome que nao existe nao vira entrega em outro lugar: a producao da forja indo para um bau
+    -- qualquer e o tipo de defeito que so aparece quando falta material la na frente.
+    chassi.configurar(ctx, r.provedor.x, r.provedor.y, r.provedor.z, 0,
+                      { item = "minecraft:iron_ingot", satelite = "fundicao" })
+    local antes = quanto(ctx, r.origem, "minecraft:iron_ingot")
+    chassi.passo(ctx, r.provedor.x, r.provedor.y, r.provedor.z)
+    exigir(quanto(ctx, r.origem, "minecraft:iron_ingot") == antes,
+           "satelite inexistente nao podia tirar nada do bau")
+
+    desmontar(ctx, 30, 3)
+end
+
+TESTES.provedor_mk2_manda_uma_pilha = function(ctx)
+    -- A diferenca entre as versoes e numerica, e e a unica coisa que precisa ser verdade: o Mk1
+    -- manda 16 por pedido e o Mk2 manda uma pilha.
+    exigir(rede.por_pedido_de("logistica:provedor") == 16,
+           "o Mk1 deveria mandar 16, manda " .. rede.por_pedido_de("logistica:provedor"))
+    exigir(rede.por_pedido_de("logistica:provedor_mk2") == 64,
+           "o Mk2 deveria mandar 64, manda " .. rede.por_pedido_de("logistica:provedor_mk2"))
+
+    local r = montar(ctx, 32, 3, "logistica:terminal")
+    ctx.server.set_block("logistica:provedor_mk2", r.provedor.x, r.provedor.y, r.provedor.z)
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:iron_ingot", 64)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    -- O Mk2 aparece na rede como provedor: se a pergunta "isto e um provedor?" tivesse ficado
+    -- espalhada por quatro arquivos, ele apareceria e nunca entregaria.
+    local lista = rede.estoque(ctx, nos)
+    local achou = false
+    for _, entrada in ipairs(lista) do
+        if entrada.item == "minecraft:iron_ingot" then achou = entrada.count == 64 end
+    end
+    exigir(achou, "o Mk2 deveria oferecer as 64 barras a rede")
+
+    local entregue = viagem.entregar(ctx, nos, r.fim, "minecraft:iron_ingot", 64)
+    exigir(entregue == 64, "o Mk2 deveria despachar as 64 de uma vez, despachou " .. entregue)
+
+    andar(ctx, nos, 12)
+    exigir(quanto(ctx, r.destino, "minecraft:iron_ingot") == 64,
+           "as 64 deveriam ter chegado, chegaram "
+           .. quanto(ctx, r.destino, "minecraft:iron_ingot"))
+
+    desmontar(ctx, 32, 3)
+end
+
+TESTES.fabricador_mk3_desce_mais_fundo = function(ctx)
+    local r = montar(ctx, 34, 3, "logistica:fabricador_mk3")
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    -- O melhor fabricador da rede manda nos limites. Pendurar um Mk3 faz a arvore descer mais
+    -- fundo sem mexer em mais nada -- e o que separa as tres versoes do original.
+    local limites = rede.limites_de("logistica:fabricador")
+    local mk3 = rede.limites_de("logistica:fabricador_mk3")
+    exigir(mk3.profundidade > limites.profundidade,
+           "o Mk3 deveria descer mais fundo que o Mk1")
+
+    -- E a arvore sente: o plano montado nesta rede usa os limites do Mk3.
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:oak_log", 16)
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:oak_planks", 4)
+    exigir(atendido == 4, "deveria atender 4 tabuas (" .. tostring(motivo) .. ")")
+    exigir(plano.limites.profundidade == mk3.profundidade,
+           "o plano deveria usar os limites do Mk3, usou " .. plano.limites.profundidade)
+
+    desmontar(ctx, 34, 3)
 end
 
 --- Roda a bateria e escreve o resultado no log.

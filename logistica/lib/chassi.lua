@@ -35,6 +35,9 @@ local MODULOS = {
     ["logistica:modulo_extrator"] = "extrator",
     ["logistica:modulo_deposito"] = "deposito",
     ["logistica:modulo_abastecedor"] = "abastecedor",
+    ["logistica:modulo_separador"] = "separador",
+    ["logistica:modulo_descarte"] = "descarte",
+    ["logistica:modulo_fabricante"] = "fabricante",
 }
 
 --- Os modulos que estao dentro daquele chassi, por slot.
@@ -80,17 +83,69 @@ end
 -- O primeiro que aceita ganha, e a varredura devolve os canos em ordem de distancia: o deposito
 -- mais perto atende. Prioridade explicita, como a do original, seria o passo seguinte.
 local function quem_aceita(ctx, nos, item)
+    local descarte = nil
+
     for _, no in ipairs(nos) do
         if no.bloco == "logistica:chassi" then
             for _, modulo in ipairs(modulos_em(ctx, no.x, no.y, no.z)) do
                 if modulo.tipo == "deposito" then
                     local config = configuracao(ctx, no.x, no.y, no.z, modulo.slot)
                     if config.item == item then return no end
+
+                elseif modulo.tipo == "descarte" and descarte == nil then
+                    -- Guarda e continua procurando. **O descarte e o ultimo destino, nunca o
+                    -- primeiro**: devolve-lo assim que aparece faria a rede destruir o que um
+                    -- deposito mais adiante aceitaria -- e o defeito seria silencioso, porque item
+                    -- destruido nao deixa rastro.
+                    descarte = no
                 end
             end
         end
     end
-    return nil
+    return descarte
+end
+
+--- Se aquele chassi destroi o que chega, em vez de guardar.
+--
+-- Perguntado na chegada da carga, e nao na saida: entre o despacho e a entrega alguem pode ter
+-- tirado o modulo, e destruir por causa de uma decisao velha e a pior forma de errar aqui.
+local function e_descarte(ctx, x, y, z)
+    if ctx.server.get_block(x, y, z) ~= "logistica:chassi" then return false end
+
+    for _, modulo in ipairs(modulos_em(ctx, x, y, z)) do
+        if modulo.tipo == "descarte" then return true end
+    end
+    return false
+end
+
+--- Os padroes de bancada que a rede sabe montar, com o que cada um produz.
+--
+-- E o que o modulo fabricante acrescenta: sem ele a arvore de pedido so conhece as receitas do
+-- jogo, e escolhe sempre a primeira. Com ele, quem monta a base decide **qual** receita a rede usa
+-- para cada item -- que e a razao de o modulo existir no original.
+local function padroes_na_rede(ctx, nos)
+    local achados = {}
+
+    for _, no in ipairs(nos) do
+        if no.bloco == "logistica:chassi" then
+            for _, modulo in ipairs(modulos_em(ctx, no.x, no.y, no.z)) do
+                if modulo.tipo == "fabricante" then
+                    local config = configuracao(ctx, no.x, no.y, no.z, modulo.slot)
+                    local padrao = config.padrao
+
+                    if padrao ~= nil then
+                        local ok, saida = pcall(function()
+                            return ctx.server.crafting_result(padrao)
+                        end)
+                        if ok and saida ~= nil then
+                            achados[#achados + 1] = { no = no, padrao = padrao, saida = saida }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return achados
 end
 
 -- ------------------------------------------------------------------ o tique
@@ -99,7 +154,25 @@ end
 local function agir_extrator(ctx, nos, no, config)
     if config.item == nil then return 0 end
 
-    local destino = quem_aceita(ctx, nos, config.item)
+    local destino
+    if config.satelite ~= nil then
+        -- Endereco nomeado: "mande para a forja", sem saber onde a forja fica. E a metade que
+        -- faltava do satelite -- ele guardava o nome e ninguem roteava por ele.
+        --
+        -- Mover a forja de lugar nao mexe em cano nenhum, e trocar qual bau e a forja e renomear um
+        -- satelite. Com `quem_aceita` isso nao da: o destino ali e "quem declarou querer este
+        -- item", que e uma pergunta sobre o item e nao sobre o lugar.
+        --
+        -- O `import` fica dentro da funcao porque abastecimento importa viagem, que importa este
+        -- modulo: no topo isso fecharia um ciclo.
+        destino = mod.import("lib/abastecimento.lua").achar_satelite(ctx, nos, config.satelite)
+
+        -- Satelite que nao existe mais nao vira entrega em outro lugar. Cair no `quem_aceita`
+        -- mandaria a producao da forja para um bau qualquer, e ninguem repararia ate faltar.
+        if destino == nil then return 0 end
+    else
+        destino = quem_aceita(ctx, nos, config.item)
+    end
     if destino == nil then return 0 end
 
     -- Nao manda para si mesmo: o item sairia e voltaria ao mesmo bau para sempre, e a rede
@@ -122,6 +195,53 @@ local function agir_extrator(ctx, nos, no, config)
             else
                 -- A linha esta cheia: devolve, senao o item deixa de existir.
                 ctx.server.insert_into(fonte.x, fonte.y, fonte.z, config.item, tirado)
+            end
+        end
+    end
+    return enviado
+end
+
+--- Um separador: manda embora tudo que achar, cada item para quem o aceitar.
+--
+-- A diferenca para o extrator e que ele nao tem item configurado: le o que esta no bau e procura
+-- destino para cada coisa. E o que transforma um bau de despejo em entrada da base -- joga tudo ali
+-- e a rede distribui.
+--
+-- O teto por volta e o mesmo do extrator, e vale para o **conjunto**: sem isso um bau cheio de
+-- coisas diferentes faria uma varredura de rota por item, e o orcamento de 20 ms nao tem essa
+-- folga.
+local function agir_separador(ctx, nos, no)
+    local enviado = 0
+
+    for _, fonte in ipairs(rede.inventarios_em(ctx, no)) do
+        if enviado >= POR_VEZ then break end
+
+        -- O conteudo e lido uma vez e percorrido: reler a cada item pagaria a leitura do bau
+        -- inteiro por pilha movida.
+        for _, entrada in ipairs(ctx.server.container_at(fonte.x, fonte.y, fonte.z)) do
+            if enviado >= POR_VEZ then break end
+
+            local destino = quem_aceita(ctx, nos, entrada.item)
+            if destino ~= nil
+               and not (destino.x == no.x and destino.y == no.y and destino.z == no.z) then
+
+                local caminho = rede.rota(ctx, no, destino)
+                if caminho ~= nil then
+                    local quanto = math.min(entrada.count, POR_VEZ - enviado)
+                    local tirado = ctx.server.extract_from(fonte.x, fonte.y, fonte.z,
+                                                           entrada.item, quanto)
+                    if tirado > 0 then
+                        local carga = { item = entrada.item, count = tirado,
+                                        rota = caminho, passo = 1 }
+                        if viagem.por_carga(ctx, no.x, no.y, no.z, carga) then
+                            enviado = enviado + tirado
+                        else
+                            -- A linha esta cheia: devolve, senao o item deixa de existir.
+                            ctx.server.insert_into(fonte.x, fonte.y, fonte.z,
+                                                   entrada.item, tirado)
+                        end
+                    end
+                end
             end
         end
     end
@@ -166,10 +286,13 @@ local function passo(ctx, x, y, z)
 
             if modulo.tipo == "extrator" then
                 agir_extrator(ctx, nos, no, config)
+            elseif modulo.tipo == "separador" then
+                agir_separador(ctx, nos, no)
             elseif modulo.tipo == "abastecedor" then
                 agir_abastecedor(ctx, nos, no, config)
             end
-            -- O deposito nao age: ele responde quando a rede pergunta quem aceita.
+            -- Deposito, descarte e fabricante nao agem: os tres respondem quando a rede pergunta --
+            -- quem aceita este item, quem destroi o que sobra, quem sabe fazer aquilo.
         end
     end
 
@@ -184,5 +307,7 @@ return {
     configuracao = configuracao,
     configurar = configurar,
     quem_aceita = quem_aceita,
+    e_descarte = e_descarte,
+    padroes_na_rede = padroes_na_rede,
     passo = passo,
 }

@@ -45,21 +45,39 @@ loader não faz, o caminho é abrir a lacuna lá, e não contornar aqui.
 | `satelite` | `satellite` | endereço nomeado, para a rede se reconfigurar sem reeditar cano |
 | `fabricador` | `crafting` | **árvore de pedido** com bancada 3×3: o padrão escolhe a receita, o que falta é fabricado, e cada ingrediente vira um pedido novo |
 
-O desenho dos seis vem do modelo do original, recortado por conexão: miolo sempre, manga no lado
-ligado, parede e decalque no lado livre.
+| `chassi` | `chassis` | nove slots de módulo; o comportamento vem do que está dentro |
+| `provedor_mk2` | `provider_mk2` | manda uma pilha por pedido, contra 16 do Mk1 |
+| `fabricador_mk2` / `mk3` | `crafting_mk2` / `mk3` | a árvore de pedido desce mais fundo |
+
+**Módulos de chassi**
+
+| Módulo | No original | O que faz |
+|---|---|---|
+| `extrator` | `extractor` | tira do baú e manda para quem aceitar — ou para um **satélite nomeado** |
+| `deposito` | `item_sink` | declara que este baú recebe um item |
+| `abastecedor` | `passive_supplier` | mantém o baú numa quantidade |
+| `separador` | `quick_sort` | manda embora **tudo** que achar, cada item para quem o aceitar |
+| `descarte` | `terminus` | aceita o que ninguém quer e destrói — **último destino, nunca o primeiro** |
+| `fabricante` | `crafter` | ensina a rede a fazer um item, pelo padrão de bancada do slot |
+
+O desenho vem do modelo do original, recortado por conexão: miolo sempre, manga no lado ligado,
+parede e decalque no lado livre.
 
 ---
 
 ## O que falta, em ordem
 
-### 1. Chassi e módulos — **primeiros três feitos**
+### ~~1. Chassi e módulos~~ — **feito**
 
 O bloco existe, com nove slots, e os módulos `extrator`, `deposito` e `abastecedor` funcionam:
 um baú exporta sozinho, outro recebe, e a rede liga os dois sem ninguém pedir. Verificado no
 servidor -- 32 barras saíram de um baú e chegaram ao outro.
 
-Falta o resto da família (`quick_sort`, `terminus`, `crafter`, `active_supplier`), que são
-variações destes, e o que está em **A refinar** abaixo.
+Os seis módulos existem. `active_supplier` **não virou um módulo próprio de propósito**: o
+`abastecedor` daqui já pede à rede o que falta, que é o comportamento ativo — um segundo módulo com
+o mesmo efeito e nome diferente seria confusão, não recurso.
+
+Cada um tem caso na bateria, inclusive o chassi, que era débito conhecido.
 
 O texto abaixo é o plano original, mantido porque descreve o que ainda vale para os que faltam.
 
@@ -90,12 +108,19 @@ mecanismo, e ficam mais baratos depois que o primeiro existir.
 inventário, e tudo isso roda num callback com 20 ms. O abastecedor já esbarrou nisso e a solução
 foi guardar um número em vez de varrer — o chassi vai precisar da mesma disciplina.
 
-### 2. Variantes mk2 e mk3
+### 2. Variantes mk2 e mk3 — **parcial**
 
-`provider_mk2`, `request_mk2`, `crafting_mk2`, `crafting_mk3`, e os chassis mk1 a mk5.
+`provedor_mk2`, `fabricador_mk2` e `fabricador_mk3` existem. A diferença é numérica, como no
+original: quanto o provedor manda por pedido, e quão fundo a árvore desce. **O melhor fabricador da
+rede manda nos limites** — pendurar um Mk3 faz a árvore descer mais fundo sem mexer em mais nada.
 
-São o mesmo cano com números maiores — quanto manda por pedido, quantos slots tem. Trabalho
-mecânico, e as texturas já estão aqui.
+Ao acrescentá-los, a pergunta "isto é um provedor?" saiu de quatro arquivos para uma tabela em
+`rede.lua`. Estava escrita como `no.bloco == "logistica:provedor"` em cada um, e esquecer um daria
+um provedor que aparece na rede e nunca entrega — sem erro nenhum no log.
+
+**Faltam:** `request_mk2` (no original ele é o pedido remoto, e depende de item com tela própria) e
+os chassis mk1 a mk5 — o número de slots é o que os diferencia, e a janela do jogo exige múltiplo
+de nove. Reproduzir exige limitar por lógica quantos slots contam, ou uma tela própria.
 
 ### 3. Periféricos
 
@@ -176,14 +201,17 @@ lugares onde a versão de hoje escolheu o caminho curto, e vale saber qual foi.
 
 ### Satélite
 
-- **Ninguém rotea por ele ainda.** Ele guarda o nome e a rede o encontra, mas nenhum outro cano usa
-  isso como destino. É a metade que falta para ele servir para o que serve no original.
+- ~~**Ninguém rotea por ele ainda.**~~ **Fechado.** Um slot extrator aponta para um satélite pelo
+  nome (`/mod logistica destino <slot> <nome>`), e entrega lá em vez de procurar quem aceita. São
+  duas perguntas diferentes e o original tem as duas: *quem quer isto* e *onde fica a forja*. Nome
+  que não existe não vira entrega em outro lugar — a produção da forja indo para um baú qualquer é
+  o tipo de defeito que só aparece quando falta material lá na frente.
 
 ### Verificação
 
-- **O chassi ainda não tem caso na bateria.** Foi verificado à mão no servidor: 32 barras saíram
-  sozinhas de um baú e chegaram ao outro. Sem caso automático, ele quebra em silêncio na próxima
-  mudança — é o mesmo débito que o fabricador teve e que já foi pago.
+- ~~**O chassi ainda não tem caso na bateria.**~~ **Pago.** `chassi_extrai_e_deposita` monta a rede,
+  extrai sem ninguém pedir e confere que chegou. Junto vieram `descarte_e_o_ultimo_destino`,
+  `fabricante_vence_a_receita_do_jogo` e `extrator_entrega_no_satelite`.
 
 ## Débito conhecido
 

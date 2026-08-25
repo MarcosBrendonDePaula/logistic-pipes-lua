@@ -60,6 +60,21 @@ end
 local function descarregar(ctx, x, y, z, carga)
     local resta = carga.count
 
+    -- O descarte destroi o que chega, e e o unico lugar do mod onde item deixa de existir de
+    -- proposito. Ele existe porque uma rede sem ultimo destino entope: um item que ninguem aceita
+    -- fica preso num cano e segura a fila atras dele.
+    --
+    -- Perguntado na chegada, e nao no despacho: entre um e outro alguem pode ter tirado o modulo, e
+    -- destruir por causa de uma decisao velha e a pior forma de errar aqui.
+    --
+    -- O `import` fica dentro da funcao de proposito: chassi importa este modulo, e importa-lo no
+    -- topo fecharia um ciclo. E a mesma solucao que o aviso ao abastecedor usa, logo abaixo.
+    if mod.import("lib/chassi.lua").e_descarte(ctx, x, y, z) then
+        ctx.log.info("LOGISTICA descarte destruiu " .. carga.count .. " x " .. carga.item
+                     .. " em " .. x .. "," .. y .. "," .. z)
+        return 0
+    end
+
     for _, alvo in ipairs(rede.inventarios_em(ctx, { x = x, y = y, z = z })) do
         if resta <= 0 then break end
         resta = ctx.server.insert_into(alvo.x, alvo.y, alvo.z, carga.item, resta)
@@ -164,7 +179,7 @@ local function entregar(ctx, nos, terminal, item, quantidade)
     for _, no in ipairs(nos) do
         if despachado >= quantidade then break end
 
-        if no.bloco == "logistica:provedor" then
+        if rede.e_provedor(no.bloco) then
             -- A rota e tracada uma vez por provedor, e nao por item: dentro de um callback com 20
             -- ms de orcamento, uma busca em largura por pilha entregue seria o que estoura.
             local caminho = rede.rota(ctx, no, terminal)
@@ -178,7 +193,11 @@ local function entregar(ctx, nos, terminal, item, quantidade)
                     -- O provedor que divide o bau com o destino e pulado. Sem isto o item sairia e
                     -- voltaria ao mesmo lugar indefinidamente.
                     if not rede.mesmo_lugar(fonte, alvo) then
-                        local pegar = quantidade - despachado
+                        -- Cada provedor contribui ate o limite da sua versao, e nao o pedido
+                        -- inteiro: e o que faz o Mk2 valer a pena e o que espalha um pedido grande
+                        -- por varios bauos em vez de esvaziar o primeiro.
+                        local pegar = math.min(quantidade - despachado,
+                                               rede.por_pedido_de(no.bloco))
                         local tirado = ctx.server.extract_from(fonte.x, fonte.y, fonte.z, item, pegar)
 
                         if tirado > 0 then

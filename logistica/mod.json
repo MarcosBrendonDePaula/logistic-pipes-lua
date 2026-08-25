@@ -85,6 +85,36 @@
       "type": "image",
       "from": "assets/logisticspipes/modules/passive_supplier.png",
       "fallback": "minecraft:item/paper"
+    },
+    "modulo_separador": {
+      "type": "image",
+      "from": "assets/logisticspipes/modules/quick_sort.png",
+      "fallback": "minecraft:item/paper"
+    },
+    "modulo_descarte": {
+      "type": "image",
+      "from": "assets/logisticspipes/modules/terminus.png",
+      "fallback": "minecraft:item/paper"
+    },
+    "modulo_fabricante": {
+      "type": "image",
+      "from": "assets/logisticspipes/modules/crafter.png",
+      "fallback": "minecraft:item/paper"
+    },
+    "provedor_mk2": {
+      "type": "image",
+      "from": "assets/logisticspipes/pipes/provider_mk2.png",
+      "fallback": "minecraft:block/lime_terracotta"
+    },
+    "fabricador_mk2": {
+      "type": "image",
+      "from": "assets/logisticspipes/pipes/crafting_mk2.png",
+      "fallback": "minecraft:block/yellow_terracotta"
+    },
+    "fabricador_mk3": {
+      "type": "image",
+      "from": "assets/logisticspipes/pipes/crafting_mk3.png",
+      "fallback": "minecraft:block/yellow_terracotta"
     }
   },
   "blocks": [
@@ -203,6 +233,9 @@
           "logistica:satelite",
           "logistica:fabricador",
           "logistica:chassi",
+          "logistica:provedor_mk2",
+          "logistica:fabricador_mk2",
+          "logistica:fabricador_mk3",
           "@items"
         ]
       },
@@ -327,6 +360,9 @@
           "logistica:satelite",
           "logistica:fabricador",
           "logistica:chassi",
+          "logistica:provedor_mk2",
+          "logistica:fabricador_mk2",
+          "logistica:fabricador_mk3",
           "@items"
         ]
       },
@@ -455,6 +491,9 @@
           "logistica:satelite",
           "logistica:fabricador",
           "logistica:chassi",
+          "logistica:provedor_mk2",
+          "logistica:fabricador_mk2",
+          "logistica:fabricador_mk3",
           "@items"
         ]
       },
@@ -578,6 +617,9 @@
           "logistica:satelite",
           "logistica:fabricador",
           "logistica:chassi",
+          "logistica:provedor_mk2",
+          "logistica:fabricador_mk2",
+          "logistica:fabricador_mk3",
           "@items"
         ]
       },
@@ -702,6 +744,9 @@
           "logistica:satelite",
           "logistica:fabricador",
           "logistica:chassi",
+          "logistica:provedor_mk2",
+          "logistica:fabricador_mk2",
+          "logistica:fabricador_mk3",
           "@items"
         ]
       },
@@ -826,6 +871,9 @@
           "logistica:satelite",
           "logistica:fabricador",
           "logistica:chassi",
+          "logistica:provedor_mk2",
+          "logistica:fabricador_mk2",
+          "logistica:fabricador_mk3",
           "@items"
         ]
       },
@@ -950,6 +998,9 @@
           "logistica:satelite",
           "logistica:fabricador",
           "logistica:chassi",
+          "logistica:provedor_mk2",
+          "logistica:fabricador_mk2",
+          "logistica:fabricador_mk3",
           "@items"
         ]
       },
@@ -965,6 +1016,390 @@
         "allow_extract": false,
         "drop_on_break": true
       }
+    },
+    {
+      "id": "provedor_mk2",
+      "name": "Cano Provedor Mk2",
+      "material": {
+        "sound": "metal"
+      },
+      "settings": {
+        "hardness": 0.8,
+        "resistance": 1.0,
+        "non_opaque": true
+      },
+      "render": {
+        "model": "@modelo_cano",
+        "texture": {
+          "ref": "provedor_mk2"
+        },
+        "obj_parts": {
+          "core": [
+            {
+              "groups": [
+                "Spacer",
+                "Edge_M_",
+                "Corner_M_"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ],
+          "connected": [
+            {
+              "groups": [
+                "Side_%s",
+                "Texture_Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ],
+          "disconnected": [
+            {
+              "groups": [
+                "Inner_Plate_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            },
+            {
+              "groups": [
+                "Texture_Plate_%s"
+              ],
+              "texture": {
+                "ref": "provedor_mk2"
+              },
+              "uv_scale": 0.75,
+              "double_sided": true,
+              "expand": 1.001
+            }
+          ],
+          "connected_inventory": [
+            {
+              "groups": [
+                "Side_BC_%s",
+                "Texture_Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ]
+        }
+      },
+      "shape": {
+        "cores": [
+          [
+            4,
+            4,
+            4,
+            12,
+            12,
+            12
+          ]
+        ],
+        "arms": [
+          [
+            5,
+            5,
+            0,
+            11,
+            11,
+            4
+          ],
+          [
+            4,
+            4,
+            0,
+            12,
+            12,
+            2
+          ]
+        ],
+        "connects_to": [
+          "logistica:cano",
+          "logistica:provedor",
+          "logistica:terminal",
+          "logistica:abastecedor",
+          "logistica:satelite",
+          "logistica:fabricador",
+          "logistica:chassi",
+          "logistica:provedor_mk2",
+          "logistica:fabricador_mk2",
+          "logistica:fabricador_mk3",
+          "@items"
+        ]
+      },
+      "block_data": true,
+      "behavior": {
+        "on_scheduled": "scripts/cano_tique.lua",
+        "on_use": "scripts/provedor_usado.lua"
+      },
+      "description": "Oferece o estoque do bau encostado. Manda uma pilha por pedido, contra 16 do Mk1."
+    },
+    {
+      "id": "fabricador_mk2",
+      "name": "Cano Fabricador Mk2",
+      "material": {
+        "sound": "metal"
+      },
+      "settings": {
+        "hardness": 0.8,
+        "resistance": 1.0,
+        "non_opaque": true
+      },
+      "render": {
+        "model": "@modelo_cano",
+        "texture": {
+          "ref": "fabricador_mk2"
+        },
+        "obj_parts": {
+          "core": [
+            {
+              "groups": [
+                "Spacer",
+                "Edge_M_",
+                "Corner_M_"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ],
+          "connected": [
+            {
+              "groups": [
+                "Side_%s",
+                "Texture_Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ],
+          "disconnected": [
+            {
+              "groups": [
+                "Inner_Plate_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            },
+            {
+              "groups": [
+                "Texture_Plate_%s"
+              ],
+              "texture": {
+                "ref": "fabricador_mk2"
+              },
+              "uv_scale": 0.75,
+              "double_sided": true,
+              "expand": 1.001
+            }
+          ],
+          "connected_inventory": [
+            {
+              "groups": [
+                "Side_BC_%s",
+                "Texture_Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ]
+        }
+      },
+      "shape": {
+        "cores": [
+          [
+            4,
+            4,
+            4,
+            12,
+            12,
+            12
+          ]
+        ],
+        "arms": [
+          [
+            5,
+            5,
+            0,
+            11,
+            11,
+            4
+          ],
+          [
+            4,
+            4,
+            0,
+            12,
+            12,
+            2
+          ]
+        ],
+        "connects_to": [
+          "logistica:cano",
+          "logistica:provedor",
+          "logistica:terminal",
+          "logistica:abastecedor",
+          "logistica:satelite",
+          "logistica:fabricador",
+          "logistica:chassi",
+          "logistica:provedor_mk2",
+          "logistica:fabricador_mk2",
+          "logistica:fabricador_mk3",
+          "@items"
+        ]
+      },
+      "block_data": true,
+      "behavior": {
+        "on_use": "scripts/fabricador_usado.lua",
+        "on_scheduled": "scripts/cano_tique.lua"
+      },
+      "description": "Fabrica sob demanda, descendo mais fundo na arvore de receitas que o Mk1."
+    },
+    {
+      "id": "fabricador_mk3",
+      "name": "Cano Fabricador Mk3",
+      "material": {
+        "sound": "metal"
+      },
+      "settings": {
+        "hardness": 0.8,
+        "resistance": 1.0,
+        "non_opaque": true
+      },
+      "render": {
+        "model": "@modelo_cano",
+        "texture": {
+          "ref": "fabricador_mk3"
+        },
+        "obj_parts": {
+          "core": [
+            {
+              "groups": [
+                "Spacer",
+                "Edge_M_",
+                "Corner_M_"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ],
+          "connected": [
+            {
+              "groups": [
+                "Side_%s",
+                "Texture_Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ],
+          "disconnected": [
+            {
+              "groups": [
+                "Inner_Plate_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            },
+            {
+              "groups": [
+                "Texture_Plate_%s"
+              ],
+              "texture": {
+                "ref": "fabricador_mk3"
+              },
+              "uv_scale": 0.75,
+              "double_sided": true,
+              "expand": 1.001
+            }
+          ],
+          "connected_inventory": [
+            {
+              "groups": [
+                "Side_BC_%s",
+                "Texture_Side_%s"
+              ],
+              "texture": {
+                "ref": "corpo"
+              },
+              "double_sided": true
+            }
+          ]
+        }
+      },
+      "shape": {
+        "cores": [
+          [
+            4,
+            4,
+            4,
+            12,
+            12,
+            12
+          ]
+        ],
+        "arms": [
+          [
+            5,
+            5,
+            0,
+            11,
+            11,
+            4
+          ],
+          [
+            4,
+            4,
+            0,
+            12,
+            12,
+            2
+          ]
+        ],
+        "connects_to": [
+          "logistica:cano",
+          "logistica:provedor",
+          "logistica:terminal",
+          "logistica:abastecedor",
+          "logistica:satelite",
+          "logistica:fabricador",
+          "logistica:chassi",
+          "logistica:provedor_mk2",
+          "logistica:fabricador_mk2",
+          "logistica:fabricador_mk3",
+          "@items"
+        ]
+      },
+      "block_data": true,
+      "behavior": {
+        "on_use": "scripts/fabricador_usado.lua",
+        "on_scheduled": "scripts/cano_tique.lua"
+      },
+      "description": "Fabrica sob demanda, montando a cadeia inteira de uma vez."
     }
   ],
   "events": {
@@ -993,6 +1428,30 @@
       "description": "Mantem o bau encostado com uma quantidade do item.",
       "texture": {
         "ref": "modulo_abastecedor"
+      }
+    },
+    {
+      "id": "modulo_separador",
+      "name": "Modulo Separador",
+      "description": "Manda para a rede tudo que achar no bau, cada item para quem o aceitar.",
+      "texture": {
+        "ref": "modulo_separador"
+      }
+    },
+    {
+      "id": "modulo_descarte",
+      "name": "Modulo Descarte",
+      "description": "Aceita o que ninguem quer, e destroi. E o ultimo destino, nunca o primeiro.",
+      "texture": {
+        "ref": "modulo_descarte"
+      }
+    },
+    {
+      "id": "modulo_fabricante",
+      "name": "Modulo Fabricante",
+      "description": "Ensina a rede a fazer um item, pelo padrao de bancada guardado no slot.",
+      "texture": {
+        "ref": "modulo_fabricante"
       }
     }
   ]

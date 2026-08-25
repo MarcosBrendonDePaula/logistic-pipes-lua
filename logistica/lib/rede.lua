@@ -11,12 +11,54 @@
 local CANOS = {
     ["logistica:cano"] = true,
     ["logistica:provedor"] = true,
+    ["logistica:provedor_mk2"] = true,
     ["logistica:terminal"] = true,
     ["logistica:abastecedor"] = true,
     ["logistica:satelite"] = true,
     ["logistica:fabricador"] = true,
+    ["logistica:fabricador_mk2"] = true,
+    ["logistica:fabricador_mk3"] = true,
     ["logistica:chassi"] = true,
 }
+
+-- Quanto cada provedor manda por pedido.
+--
+-- Os numeros sao do original: o Mk1 manda 16 e o Mk2 manda uma pilha. Manter os 16 no primeiro e o
+-- que torna o Mk2 uma melhoria de verdade, e nao um cano mais bonito.
+--
+-- **A tabela existe para a pergunta "isto e um provedor?" morar num lugar so.** Ela estava escrita
+-- como `no.bloco == "logistica:provedor"` em quatro arquivos, e acrescentar o Mk2 significaria
+-- lembrar dos quatro -- o que ficasse para tras daria um provedor que aparece na rede e nunca
+-- entrega, sem erro nenhum no log.
+local PROVEDORES = {
+    ["logistica:provedor"] = 16,
+    ["logistica:provedor_mk2"] = 64,
+}
+
+-- Ate onde cada fabricador desce a arvore de pedido, e quantos nos ela pode ter.
+--
+-- E o que separa as tres versoes do original: o Mk1 resolve uma receita de um nivel, e o Mk3
+-- monta a cadeia inteira. Os limites nao sao enfeite -- a arvore roda dentro de um callback com 20
+-- ms, e sem teto uma receita circular nao terminaria.
+local FABRICADORES = {
+    ["logistica:fabricador"] = { profundidade = 5, nos = 64 },
+    ["logistica:fabricador_mk2"] = { profundidade = 8, nos = 128 },
+    ["logistica:fabricador_mk3"] = { profundidade = 12, nos = 256 },
+}
+
+--- Se aquele bloco oferece o estoque do bau encostado, e quanto manda por pedido.
+local function e_provedor(bloco)
+    return PROVEDORES[bloco] ~= nil
+end
+
+local function por_pedido_de(bloco)
+    return PROVEDORES[bloco] or 0
+end
+
+--- Os limites de planejamento daquele fabricador, ou os do Mk1 quando nao for um.
+local function limites_de(bloco)
+    return FABRICADORES[bloco] or FABRICADORES["logistica:fabricador"]
+end
 
 -- O quanto a rede pode crescer antes de o loader desistir de varre-la.
 --
@@ -177,7 +219,7 @@ local function estoque(ctx, nos)
     local ordem = {}
 
     for _, no in ipairs(nos) do
-        if no.bloco == "logistica:provedor" then
+        if e_provedor(no.bloco) then
             for _, alvo in ipairs(inventarios_em(ctx, no)) do
                 for _, entrada in ipairs(ctx.server.container_at(alvo.x, alvo.y, alvo.z)) do
                     if total[entrada.item] == nil then
@@ -219,6 +261,11 @@ end
 
 return {
     CANOS = CANOS,
+    PROVEDORES = PROVEDORES,
+    FABRICADORES = FABRICADORES,
+    e_provedor = e_provedor,
+    por_pedido_de = por_pedido_de,
+    limites_de = limites_de,
     MAX_NOS = MAX_NOS,
     POR_PEDIDO = POR_PEDIDO,
     varrer = varrer,

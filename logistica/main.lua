@@ -47,6 +47,8 @@ mod.screen("fabricador", fabricador.evento)
 --   /mod logistica abastecer <x> <y> <z> <item> <qtd>     mantem um bau em estoque
 --   /mod logistica fabricar <x> <y> <z> <item> [qtd]      pede a rede que fabrique
 --   /mod logistica modulo <x> <y> <z> <slot> <item> [qtd]  configura um slot do chassi
+--   /mod logistica padrao <x> <y> <z> <slot> <linhas>   padrao de bancada de um fabricante
+--   /mod logistica destino <x> <y> <z> <slot> [nome]   extrator entrega num satelite
 --   /mod logistica estado <x> <y> <z>                     conexoes daquele cano, lado a lado
 --   /mod logistica mapa <x> <y> <z>                       a rede toda, e os canos soltos
 --   /mod logistica autoteste [caso]                       roda a bateria de verificacao
@@ -285,6 +287,103 @@ mod.command("logistica", function(ctx)
         end
         return
     end
+    if acao == "destino" then
+        -- Manda um slot extrator entregar num satelite nomeado, em vez de "quem aceitar".
+        --
+        -- Sao duas perguntas diferentes, e o original tem as duas: "quem quer isto" e "onde fica a
+        -- forja". A segunda e o que deixa mover um bau de lugar sem reeditar cano nenhum.
+        local slot = tonumber(args[5])
+        local nome = args[6]
+
+        if slot == nil then
+            responder(ctx, "uso: /mod logistica destino <x> <y> <z> <slot> [<nome do satelite>]"
+                            .. " -- sem nome, volta a entregar a quem aceitar", true)
+            return
+        end
+        if ctx.server.get_block(x, y, z) ~= "logistica:chassi" then
+            responder(ctx, "LOGISTICA nao ha chassi em " .. x .. "," .. y .. "," .. z, true)
+            return
+        end
+
+        local config = chassi.configuracao(ctx, x, y, z, slot)
+        config.satelite = nome
+        chassi.configurar(ctx, x, y, z, slot, config)
+        ctx.server.schedule_block(x, y, z, chassi.INTERVALO)
+
+        if nome == nil then
+            responder(ctx, "LOGISTICA slot " .. slot .. " volta a entregar a quem aceitar")
+        else
+            -- Confere agora, e nao no primeiro tique: um nome errado ficaria em silencio para
+            -- sempre, porque um extrator sem destino simplesmente nao age.
+            local nos = rede.varrer(ctx, x, y, z)
+            local achado = abastecimento.achar_satelite(ctx, nos, nome)
+            responder(ctx, "LOGISTICA slot " .. slot .. " entrega no satelite " .. nome
+                           .. (achado == nil and " -- ATENCAO: nenhum satelite com esse nome na rede"
+                               or ""),
+                      achado == nil)
+        end
+        return
+    end
+
+    if acao == "padrao" then
+        -- O padrao de bancada de um slot fabricante, num argumento so.
+        --
+        -- Nove argumentos separados seriam nove chances de errar a contagem e nenhuma forma de ver
+        -- o engano: o formato com barras desenha a bancada na propria linha de comando, e um
+        -- tracinho e a celula vazia.
+        --
+        --   /mod logistica padrao 0 tabua,-,-/tabua,-,-/-,-,-
+        local slot = tonumber(args[5])
+        local desenho = args[6]
+
+        if slot == nil or desenho == nil then
+            responder(ctx, "uso: /mod logistica padrao <x> <y> <z> <slot>"
+                            .. " <linha/linha/linha>, celulas separadas por virgula e - para vazia",
+                      true)
+            return
+        end
+        if ctx.server.get_block(x, y, z) ~= "logistica:chassi" then
+            responder(ctx, "LOGISTICA nao ha chassi em " .. x .. "," .. y .. "," .. z, true)
+            return
+        end
+
+        local padrao = {}
+        for slotDoPadrao = 1, 9 do padrao[slotDoPadrao] = "" end
+
+        local celula = 1
+        for linha in string.gmatch(desenho, "[^/]+") do
+            for item in string.gmatch(linha, "[^,]+") do
+                if celula <= 9 then
+                    -- Sem namespace vale minecraft, como em todo comando do jogo.
+                    if item ~= "-" then
+                        padrao[celula] = string.find(item, ":") and item or ("minecraft:" .. item)
+                    end
+                    celula = celula + 1
+                end
+            end
+            -- Uma linha curta nao empurra a proxima para cima: a bancada e 3x3, e "tabua/-,tabua"
+            -- precisa dizer a mesma coisa que "tabua,-,-/-,tabua,-".
+            celula = math.ceil(celula / 3) * 3 + 1
+            if celula > 10 then break end
+        end
+
+        local ok, saida = pcall(function() return ctx.server.crafting_result(padrao) end)
+        if not ok then
+            responder(ctx, "LOGISTICA " .. tostring(saida), true)
+            return
+        end
+        if saida == nil then
+            responder(ctx, "LOGISTICA esse arranjo nao faz nada", true)
+            return
+        end
+
+        chassi.configurar(ctx, x, y, z, slot, { padrao = padrao })
+        ctx.server.schedule_block(x, y, z, chassi.INTERVALO)
+        responder(ctx, "LOGISTICA padrao no slot " .. slot .. " faz "
+                       .. saida.count .. " x " .. saida.item)
+        return
+    end
+
     if acao == "modulo" then
         local slot = tonumber(args[5])
         local item = args[6]
