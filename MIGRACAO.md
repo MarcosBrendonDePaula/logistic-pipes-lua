@@ -211,6 +211,40 @@ lista é o que o terminal e o `/mod logistica fabricantes` leem, então os três
 Com máquina, os ingredientes entram nela e o produto é retirado dela: o que não sair, não foi
 produzido.
 
+### Mapear a máquina: quem sabe é o jogador
+
+Um fabricador acoplado a um baú funciona — joga o material dentro e tira o produto. Acoplado a uma
+**fornalha**, não: o carvão vai parar no slot do minério, o minério no do combustível, e o produto é
+puxado de volta como se fosse ingrediente. O loader não sabe o que é cada slot, e a máquina não tem
+como dizer.
+
+A saída não é o mod aprender o que é uma fornalha. É listar os N slots e deixar quem sabe decidir:
+
+```
+/mod logistica maquina                        (mirando no cano)
+  slot 0: 8xiron_ore   [nenhum]
+  slot 1: (vazio)      [nenhum]
+  slot 2: (vazio)      [nenhum]
+
+/mod logistica maquina 0 entrada iron_ore
+/mod logistica maquina 1 entrada coal
+/mod logistica maquina 2 saida
+```
+
+Três decisões:
+
+- **O mapa mora no cano, não na máquina.** A máquina é de outro mod e pode nem guardar dados. E é
+  uma decisão sobre *aquele acoplamento*: a mesma fornalha entre dois canos pode ser entrada de um
+  e saída do outro.
+- **Sem mapa, nada muda.** Deixar a máquina escolher o slot continua valendo, e para um baú está
+  certo. O mapa só entra quando alguém o desenha.
+- **O filtro por item separa slots do mesmo papel.** Vence o slot que pede *aquele item*; depois,
+  qualquer entrada sem filtro. É o que manda carvão e minério para lugares diferentes.
+
+Isso funciona com máquina de qualquer mod, sem o loader nem este mod conhecerem nenhuma — e é o que
+torna a **bancada especializada do original desnecessária**: em vez de um bloco nosso que a rede
+sabe operar, qualquer bloco pode ser operado depois de descrito.
+
 **A máquina fica com o material se não produzir.** É o que uma fornalha faz quando você põe minério
 e fecha a tela. O material não volta, mas também não vira produto — e o defeito que importa evitar,
 item aparecendo do nada, deixa de existir.

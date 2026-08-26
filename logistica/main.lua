@@ -29,6 +29,7 @@ local abastecimento = mod.import("lib/abastecimento.lua")
 local autoteste = mod.import("lib/autoteste.lua")
 local fabricacao = mod.import("lib/fabricacao.lua")
 local chassi = mod.import("lib/chassi.lua")
+local maquina = mod.import("lib/maquina.lua")
 local viagem = mod.import("lib/viagem.lua")
 
 --- Le a receita da bancada encostada num fabricador e desenha nos slots dele.
@@ -139,6 +140,7 @@ mod.screen("fabricador_mk3", botao_do_fabricador)
 --   /mod logistica importar <x> <y> <z>                le a receita da bancada ao lado
 --   /mod logistica resultado <x> <y> <z> <item> [qtd] declara o que o cano produz
 --   /mod logistica fabricantes <x> <y> <z>            quem sabe fabricar o que, na rede
+--   /mod logistica maquina <x> <y> <z> [slot] [papel] [item]  mapeia os slots da maquina
 --   /mod logistica estado <x> <y> <z>                     conexoes daquele cano, lado a lado
 --   /mod logistica mapa <x> <y> <z>                       a rede toda, e os canos soltos
 --   /mod logistica autoteste [caso]                       roda a bateria de verificacao
@@ -474,6 +476,59 @@ mod.command("logistica", function(ctx)
             responder(ctx, "LOGISTICA " .. #padroes .. " receita(s) que a rede sabe fazer"
                            .. " (" .. prontos .. " de " .. canos .. " cano(s) prontos)")
         end
+        return
+    end
+
+    if acao == "maquina" then
+        -- Lista os slots da maquina acoplada, e deixa dizer o que cada um e.
+        --
+        -- **O loader nao sabe o que e uma fornalha, e nao precisa saber.** A maquina tem N slots; o
+        -- jogador diz qual e entrada e qual e saida, e opcionalmente o item que passa ali -- que e o
+        -- que separa o slot do minerio do slot do combustivel. Funciona para maquina de qualquer
+        -- mod, sem ninguem conhecer nenhuma.
+        local bloco = ctx.server.get_block(x, y, z)
+        if bloco == nil or not rede.CANOS[bloco] then
+            responder(ctx, "LOGISTICA nao ha cano em " .. x .. "," .. y .. "," .. z, true)
+            return
+        end
+
+        local cano = { x = x, y = y, z = z }
+        local acoplada = rede.inventarios_em(ctx, cano)[1]
+        if acoplada == nil then
+            responder(ctx, "LOGISTICA nao ha maquina encostada neste cano", true)
+            return
+        end
+
+        local slot = tonumber(args[5])
+        if slot ~= nil then
+            local papel = args[6] or "nenhum"
+            local item = args[7]
+            if item ~= nil and not string.find(item, ":") then item = "minecraft:" .. item end
+
+            local ok, erro = maquina.definir(ctx, x, y, z, slot, papel, item)
+            if not ok then
+                responder(ctx, "LOGISTICA " .. erro, true)
+                return
+            end
+            responder(ctx, "LOGISTICA slot " .. slot .. " = " .. papel
+                           .. (item and (" (" .. item .. ")") or ""))
+            return
+        end
+
+        responder(ctx, "LOGISTICA maquina em " .. acoplada.x .. "," .. acoplada.y .. ","
+                       .. acoplada.z .. " "
+                       .. tostring(ctx.server.get_block(acoplada.x, acoplada.y, acoplada.z)))
+
+        for _, s in ipairs(maquina.listar(ctx, cano, acoplada)) do
+            responder(ctx, "  slot " .. s.slot .. ": "
+                           .. (s.item and (s.count .. "x" .. string.gsub(s.item, "^minecraft:", ""))
+                               or "(vazio)")
+                           .. "  [" .. s.papel .. "]"
+                           .. (s.filtro and (" so " .. string.gsub(s.filtro, "^minecraft:", ""))
+                               or ""))
+        end
+        responder(ctx, "LOGISTICA use: /mod logistica maquina <x> <y> <z> <slot>"
+                       .. " entrada|saida|nenhum [item]")
         return
     end
 

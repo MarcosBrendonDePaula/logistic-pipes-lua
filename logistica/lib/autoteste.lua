@@ -17,6 +17,7 @@ local viagem = mod.import("lib/viagem.lua")
 local abastecimento = mod.import("lib/abastecimento.lua")
 local fabricacao = mod.import("lib/fabricacao.lua")
 local chassi = mod.import("lib/chassi.lua")
+local maquina = mod.import("lib/maquina.lua")
 
 -- Onde a bateria monta as redes.
 --
@@ -691,6 +692,45 @@ TESTES.escolhe_o_ingrediente_que_a_rede_tem = function(ctx)
     exigir(quanto(ctx, r.destino, "minecraft:chest") == 1, "o bau deveria estar no destino")
 
     desmontar(ctx, 40, 3)
+end
+
+TESTES.mapa_de_slots_da_maquina = function(ctx)
+    -- O jogador diz o que e cada slot, e o loader nao precisa saber o que e uma fornalha.
+    local r = montar(ctx, 42, 3, "logistica:terminal")
+
+    local fab = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:fabricador", fab.x, fab.y, fab.z)
+
+    local forno = { x = fab.x + 1, y = fab.y, z = fab.z }
+    ctx.server.set_block("minecraft:furnace", forno.x, forno.y, forno.z)
+
+    -- **A fornalha tem tres slots, e dois deles estao vazios.** `container_at` mostraria zero: e
+    -- por isso que listar exige saber o tamanho, e nao so o conteudo.
+    local slots = maquina.listar(ctx, fab, forno)
+    exigir(#slots == 3, "a fornalha deveria ter 3 slots, listou " .. #slots)
+    for _, s in ipairs(slots) do
+        exigir(s.papel == "nenhum", "slot " .. s.slot .. " nao devia ter papel ainda")
+    end
+
+    -- O jogador desenha: minerio no 0, combustivel no 1, produto no 2.
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 0, "entrada", "minecraft:iron_ore")
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 1, "entrada", "minecraft:coal")
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 2, "saida")
+
+    -- E cada item acha o proprio lugar. Sem isso o carvao vai para o slot do minerio.
+    exigir(maquina.entrada_para(ctx, fab, "minecraft:iron_ore") == 0,
+           "o minerio deveria ir para o slot 0")
+    exigir(maquina.entrada_para(ctx, fab, "minecraft:coal") == 1,
+           "o carvao deveria ir para o slot 1")
+    exigir(maquina.saida_para(ctx, fab, "minecraft:iron_ingot") == 2,
+           "o produto deveria sair do slot 2")
+
+    -- Um item que ninguem pediu nao vira entrada: nao ha slot livre sem filtro.
+    exigir(maquina.entrada_para(ctx, fab, "minecraft:dirt") == nil,
+           "terra nao devia ter slot de entrada")
+
+    ctx.server.set_block("minecraft:air", forno.x, forno.y, forno.z)
+    desmontar(ctx, 42, 3)
 end
 
 --- Roda a bateria e escreve o resultado no log.

@@ -224,7 +224,7 @@ local function planejar(ctx, nos, item, quantidade, estado)
         estado.padroes = mod.import("lib/chassi.lua").padroes_na_rede(ctx, nos)
     end
 
-    local porLote, ingredientes, maquina
+    local porLote, ingredientes, maquina, cano
     for _, oferta in ipairs(estado.padroes) do
         if oferta.saida.item == item then
             -- Quem filtra o declarado sem maquina e `padroes_na_rede`: a lista ja chega com o
@@ -233,6 +233,7 @@ local function planejar(ctx, nos, item, quantidade, estado)
             porLote = oferta.saida.count
             ingredientes = ingredientes_do_padrao(oferta.padrao)
             maquina = oferta.maquina
+            cano = oferta.no
             break
         end
     end
@@ -310,6 +311,9 @@ local function planejar(ctx, nos, item, quantidade, estado)
         ingredientes = ingredientes,
         -- Presente so quando o resultado foi declarado: e por onde o produto tem que passar.
         maquina = maquina,
+        -- E de qual cano veio, porque o mapa de slots da maquina mora nele: a mesma fornalha
+        -- acoplada a dois canos pode ser entrada de um e saida do outro.
+        cano = cano,
     }
 
     -- A sobra do ultimo lote fica disponivel para outro ramo -- e o que o original chama de extra.
@@ -454,10 +458,21 @@ local function executar(ctx, nos, plano, destino)
     -- fornalha faz quando voce poe minerio e fecha a tela. O material nao volta, mas tambem nao
     -- vira produto -- e o defeito que importa evitar, item aparecendo, nao acontece.
     if raiz.maquina ~= nil then
+        local maquina = mod.import("lib/maquina.lua")
+        local cano = raiz.cano or destino
+
         for _, ingrediente in ipairs(raiz.ingredientes) do
             local quantos = ingrediente.count * raiz.lotes
+
+            -- **O slot vem do mapa que o jogador desenhou.**
+            --
+            -- Sem ele, o carvao vai parar no slot do minerio e o minerio no do combustivel: quem
+            -- escolhe e a maquina, e ela nao sabe o que a rede quis dizer. Sem mapa, o
+            -- comportamento antigo -- deixar a maquina decidir -- continua valendo, e para um bau
+            -- ele esta certo.
+            local slot = maquina.entrada_para(ctx, cano, ingrediente.item)
             local naoCoube = ctx.server.insert_into(raiz.maquina.x, raiz.maquina.y, raiz.maquina.z,
-                                                    ingrediente.item, quantos)
+                                                    ingrediente.item, quantos, slot)
             if naoCoube > 0 then
                 ctx.log.warn("LOGISTICA a maquina em " .. raiz.maquina.x .. ","
                              .. raiz.maquina.y .. "," .. raiz.maquina.z .. " nao aceitou "
@@ -465,8 +480,11 @@ local function executar(ctx, nos, plano, destino)
             end
         end
 
+        -- E o produto sai do slot de saida, e nao de qualquer lugar: puxar sem slot tiraria de
+        -- volta o proprio ingrediente que acabou de entrar.
+        local saida = maquina.saida_para(ctx, cano, raiz.item)
         produzido = ctx.server.extract_from(raiz.maquina.x, raiz.maquina.y, raiz.maquina.z,
-                                            raiz.item, produzido)
+                                            raiz.item, produzido, saida)
         if produzido <= 0 then
             return 0, "a maquina recebeu o material e ainda nao devolveu " .. raiz.item
         end
