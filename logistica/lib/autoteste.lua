@@ -603,32 +603,67 @@ end
 
 TESTES.resultado_declarado_vence_o_jogo = function(ctx)
     -- O que abre o sistema para qualquer maquina: o jogo nao precisa conhecer o arranjo.
-    local r = montar(ctx, 38, 3, "logistica:fabricador")
+    --
+    -- O fabricador fica **no meio da linha**, sem bau encostado. Isso importa: o bau de destino do
+    -- ultimo cano contaria como maquina, e o teste passaria sem provar nada.
+    local r = montar(ctx, 38, 3, "logistica:terminal")
     ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 16)
 
+    local fab = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:fabricador", fab.x, fab.y, fab.z)
+
     -- Uma pedra sozinha no meio nao e receita de bancada nenhuma...
-    ctx.server.set_slot(r.fim.x, r.fim.y, r.fim.z, 4, "minecraft:cobblestone", 1)
+    ctx.server.set_slot(fab.x, fab.y, fab.z, 4, "minecraft:cobblestone", 1)
 
     local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
     exigir(#chassi.padroes_na_rede(ctx, nos) == 0,
            "sem resultado declarado, o jogo nao conhece esse arranjo")
 
     -- ...mas um moedor de outro mod faria cascalho. Quem declara e quem sabe da maquina.
-    chassi.declarar_resultado(ctx, r.fim.x, r.fim.y, r.fim.z, "minecraft:gravel", 2)
+    chassi.declarar_resultado(ctx, fab.x, fab.y, fab.z, "minecraft:gravel", 2)
+
+    -- **Sem maquina acoplada, a declaracao nao vale.** Aceita-la seria criar item do nada segundo
+    -- uma regra que o proprio jogador escreveu -- duplicacao livre num servidor.
+    local achada = chassi.maquina_de(ctx, fab)
+    exigir(achada == nil,
+           "o fabricador nao devia ter maquina encostada, achou "
+           .. (achada and (achada.x .. "," .. achada.y .. "," .. achada.z .. " = "
+                           .. tostring(ctx.server.get_block(achada.x, achada.y, achada.z)))
+               or "nada"))
+    exigir(#chassi.padroes_na_rede(ctx, nos) == 0,
+           "sem maquina, o padrao declarado nao podia entrar na lista")
+    exigir(select(1, fabricacao.planejar(ctx, nos, "minecraft:gravel", 2)) == 0,
+           "sem maquina, o resultado declarado nao podia valer")
+
+    -- A maquina: um bau encostado no fabricador, ja com o produto dentro -- e o que um moedor
+    -- teria depois de moer. O cano poe a pedra la e tira o cascalho de la.
+    local maquina = { x = fab.x + 1, y = fab.y, z = fab.z }
+    ctx.server.set_block("minecraft:chest", maquina.x, maquina.y, maquina.z)
+    ctx.server.insert_into(maquina.x, maquina.y, maquina.z, "minecraft:gravel", 8)
 
     local padroes = chassi.padroes_na_rede(ctx, nos)
-    exigir(#padroes == 1, "com resultado declarado a rede deveria saber fazer, achou " .. #padroes)
+    exigir(#padroes == 1, "com maquina, a rede deveria saber fazer, achou " .. #padroes)
     exigir(padroes[1].saida.item == "minecraft:gravel" and padroes[1].saida.count == 2,
            "deveria produzir 2 cascalho, produz " .. tostring(padroes[1].saida.count)
            .. " x " .. tostring(padroes[1].saida.item))
 
-    -- E a arvore de pedido usa isso como qualquer receita.
     local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:gravel", 2)
     exigir(atendido == 2, "deveria atender 2 cascalho, atendeu " .. atendido
                           .. " (" .. tostring(motivo) .. ")")
     exigir(plano.retirar["minecraft:cobblestone"] == 1,
            "deveria sair 1 pedra, sai " .. tostring(plano.retirar["minecraft:cobblestone"]))
 
+    -- O produto sai DA MAQUINA, e nao do nada: o bau tinha 8 cascalhos e fica com 6.
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 2, "deveriam ficar prontos 2 cascalhos, ficaram " .. pronto)
+    exigir(quanto(ctx, maquina, "minecraft:gravel") == 6,
+           "a maquina deveria ficar com 6 cascalhos, ficou com "
+           .. quanto(ctx, maquina, "minecraft:gravel"))
+    exigir(quanto(ctx, maquina, "minecraft:cobblestone") == 1,
+           "a pedra deveria ter entrado na maquina, tem "
+           .. quanto(ctx, maquina, "minecraft:cobblestone"))
+
+    ctx.server.set_block("minecraft:air", maquina.x, maquina.y, maquina.z)
     desmontar(ctx, 38, 3)
 end
 

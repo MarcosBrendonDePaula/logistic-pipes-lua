@@ -199,6 +199,22 @@ a rede só sabe fabricar o que a bancada do jogo faz. Com ele, o mesmo cano serv
 acoplada — forno, moedor, prensa de outro mod: o padrão diz o que entra, o resultado diz o que sai,
 e nem o mod nem o loader precisam entender a máquina do meio.
 
+**E ele exige a máquina.** A distinção tem uma lógica:
+
+| Origem do resultado | Quem faz | Por quê |
+|---|---|---|
+| receita que o jogo conhece | o próprio cano | é o mesmo que um jogador montando na bancada; nada aparece que ele não pudesse fazer à mão |
+| declarado à mão | a máquina acoplada | é uma afirmação *sobre uma máquina*, e sem ela seria criar item do nada segundo uma regra que o próprio jogador escreveu |
+
+Sem inventário encostado, um padrão declarado **nem entra** na lista do que a rede sabe fazer — e a
+lista é o que o terminal e o `/mod logistica fabricantes` leem, então os três contam a mesma verdade.
+Com máquina, os ingredientes entram nela e o produto é retirado dela: o que não sair, não foi
+produzido.
+
+**A máquina fica com o material se não produzir.** É o que uma fornalha faz quando você põe minério
+e fecha a tela. O material não volta, mas também não vira produto — e o defeito que importa evitar,
+item aparecendo do nada, deixa de existir.
+
 O terminal lista o que a rede **sabe fazer** junto do que ela **tem**, com o botão escrito "Fazer"
 em vez de "Pedir". Sem isso um cano fabricador só servia a quem já sabia de cor que ele estava lá, e
 o pedido tinha que ser digitado no escuro.

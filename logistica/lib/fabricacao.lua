@@ -224,11 +224,15 @@ local function planejar(ctx, nos, item, quantidade, estado)
         estado.padroes = mod.import("lib/chassi.lua").padroes_na_rede(ctx, nos)
     end
 
-    local porLote, ingredientes
+    local porLote, ingredientes, maquina
     for _, oferta in ipairs(estado.padroes) do
         if oferta.saida.item == item then
+            -- Quem filtra o declarado sem maquina e `padroes_na_rede`: a lista ja chega com o
+            -- que a rede realmente sabe fazer, e conferir de novo aqui daria dois lugares para a
+            -- mesma regra.
             porLote = oferta.saida.count
             ingredientes = ingredientes_do_padrao(oferta.padrao)
+            maquina = oferta.maquina
             break
         end
     end
@@ -304,6 +308,8 @@ local function planejar(ctx, nos, item, quantidade, estado)
         lotes = lotes,
         por_lote = porLote,
         ingredientes = ingredientes,
+        -- Presente so quando o resultado foi declarado: e por onde o produto tem que passar.
+        maquina = maquina,
     }
 
     -- A sobra do ultimo lote fica disponivel para outro ramo -- e o que o original chama de extra.
@@ -438,6 +444,34 @@ local function executar(ctx, nos, plano, destino)
     if alvo == nil then return 0, "sem bau encostado em quem pediu" end
 
     local produzido = raiz.lotes * raiz.por_lote
+
+    -- Um passo com maquina passa por ela, e nao aparece do nada.
+    --
+    -- Os ingredientes entram na maquina acoplada e o produto e retirado de la: o que nao sair, nao
+    -- foi produzido. E o que separa "a rede sabe fazer isto" de "o jogador escreveu que sabe".
+    --
+    -- **A maquina fica com o material se nao produzir**, e isso e de proposito: e o que uma
+    -- fornalha faz quando voce poe minerio e fecha a tela. O material nao volta, mas tambem nao
+    -- vira produto -- e o defeito que importa evitar, item aparecendo, nao acontece.
+    if raiz.maquina ~= nil then
+        for _, ingrediente in ipairs(raiz.ingredientes) do
+            local quantos = ingrediente.count * raiz.lotes
+            local naoCoube = ctx.server.insert_into(raiz.maquina.x, raiz.maquina.y, raiz.maquina.z,
+                                                    ingrediente.item, quantos)
+            if naoCoube > 0 then
+                ctx.log.warn("LOGISTICA a maquina em " .. raiz.maquina.x .. ","
+                             .. raiz.maquina.y .. "," .. raiz.maquina.z .. " nao aceitou "
+                             .. naoCoube .. " x " .. ingrediente.item)
+            end
+        end
+
+        produzido = ctx.server.extract_from(raiz.maquina.x, raiz.maquina.y, raiz.maquina.z,
+                                            raiz.item, produzido)
+        if produzido <= 0 then
+            return 0, "a maquina recebeu o material e ainda nao devolveu " .. raiz.item
+        end
+    end
+
     local sobrou = ctx.server.insert_into(alvo.x, alvo.y, alvo.z, raiz.item, produzido)
 
     -- **Um registro por fabricacao, dizendo o que entrou e o que saiu.**

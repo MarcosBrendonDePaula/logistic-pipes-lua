@@ -118,6 +118,46 @@ local function e_descarte(ctx, x, y, z)
     return false
 end
 
+--- O que aquele padrao produz, guardado no proprio bloco.
+--
+-- `crafting_result` pergunta ao livro de receitas do jogo, e a busca percorre as receitas do tipo
+-- ate casar -- num modpack sao milhares. A rede pergunta por cano a cada planejamento, e isso
+-- sozinho aproxima o callback dos 20 ms.
+--
+-- O padrao so muda quando alguem mexe nos slots, entao a resposta vale ate la. A chave e o proprio
+-- padrao concatenado: comparar o texto e barato, e um padrao diferente invalida sozinho.
+local function resultado_calculado(ctx, x, y, z, padrao)
+    local chave = table.concat(padrao, "|")
+    local dados = ctx.server.get_block_data(x, y, z)
+    local guardado = dados.saida
+
+    if guardado ~= nil and guardado.chave == chave then
+        -- `false` guardado significa "o jogo nao conhece", e vale tanto quanto uma resposta boa:
+        -- descobrir isso custa a mesma varredura.
+        if guardado.item == nil then return nil end
+        return { item = guardado.item, count = guardado.count }
+    end
+
+    local ok, saida = pcall(function() return ctx.server.crafting_result(padrao) end)
+    if not ok then saida = nil end
+
+    dados.saida = saida ~= nil
+            and { chave = chave, item = saida.item, count = saida.count }
+            or { chave = chave }
+    ctx.server.set_block_data(x, y, z, dados)
+
+    return saida
+end
+
+--- A maquina acoplada a um cano: o primeiro inventario vizinho que nao e cano.
+--
+-- E onde um resultado declarado tem que ser produzido. Devolve nil quando nao ha nenhuma, e ai o
+-- padrao declarado simplesmente nao entra na lista do que a rede sabe fazer.
+local function maquina_de(ctx, no)
+    local achados = rede.inventarios_em(ctx, no)
+    return achados[1]
+end
+
 --- Os padroes de bancada que a rede sabe montar, com o que cada um produz.
 --
 -- E o que o modulo fabricante acrescenta: sem ele a arvore de pedido so conhece as receitas do
@@ -185,16 +225,38 @@ local function padroes_na_rede(ctx, nos)
                 -- daqui" sabe da maquina que o loader nao conhece; perguntar ao jogo por cima disso
                 -- responderia "esse arranjo nao faz nada" e o cano ficaria mudo na rede.
                 local saida = resultado_do_bloco(ctx, no.x, no.y, no.z)
+                local declarado = saida ~= nil
 
                 if saida == nil then
-                    local ok, doJogo = pcall(function()
-                        return ctx.server.crafting_result(padrao)
-                    end)
-                    if ok then saida = doJogo end
+                    saida = resultado_calculado(ctx, no.x, no.y, no.z, padrao)
                 end
 
+                -- **Um resultado declarado sem maquina nao entra na lista.**
+                --
+                -- A lista responde "o que esta rede sabe fazer", e uma declaracao sem maquina nao e
+                -- uma resposta: e uma afirmacao sobre uma prensa que nao existe. Filtrar aqui, e
+                -- nao no planejamento, e o que faz o terminal e o `/mod logistica fabricantes`
+                -- contarem a mesma verdade -- eles leem esta lista.
+                local maquina = declarado and maquina_de(ctx, no) or nil
+                if declarado and maquina == nil then saida = nil end
+
                 if saida ~= nil then
-                    achados[#achados + 1] = { no = no, padrao = padrao, saida = saida }
+                    -- **De onde veio o resultado muda quem faz o trabalho.**
+                    --
+                    -- Uma receita que o jogo conhece, o cano faz sozinho: e o mesmo que um jogador
+                    -- montando na bancada, e nada aparece que ele nao pudesse fazer a mao.
+                    --
+                    -- Um resultado declarado e uma afirmacao sobre uma MAQUINA -- "esta prensa faz
+                    -- cascalho de pedra". Sem a maquina, aceitar a afirmacao seria criar item do
+                    -- nada segundo uma regra que o proprio jogador escreveu: duplicacao livre num
+                    -- servidor com outras pessoas.
+                    achados[#achados + 1] = {
+                        no = no,
+                        padrao = padrao,
+                        saida = saida,
+                        declarado = declarado,
+                        maquina = maquina,
+                    }
                 end
             end
         end
@@ -380,6 +442,7 @@ return {
     configurar = configurar,
     quem_aceita = quem_aceita,
     padrao_do_bloco = padrao_do_bloco,
+    maquina_de = maquina_de,
     resultado_do_bloco = resultado_do_bloco,
     declarar_resultado = declarar_resultado,
     e_descarte = e_descarte,
