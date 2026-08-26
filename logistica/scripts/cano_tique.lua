@@ -9,11 +9,16 @@
 local viagem = mod.import("lib/viagem.lua")
 local abastecimento = mod.import("lib/abastecimento.lua")
 local chassi = mod.import("lib/chassi.lua")
+local espera = mod.import("lib/espera.lua")
 
 return function(ctx)
     local x, y, z = ctx.block.x, ctx.block.y, ctx.block.z
 
     viagem.passo(ctx, x, y, z)
+
+    -- A maquina que este cano esta esperando, se estiver esperando alguma. Vale para qualquer cano
+    -- porque a espera mora no block_data dele, e nao no tipo: um dia outro cano vai querer esperar.
+    espera.conferir(ctx, x, y, z)
 
     if ctx.block.id == "logistica:abastecedor" then
         abastecimento.conferir(ctx, x, y, z)

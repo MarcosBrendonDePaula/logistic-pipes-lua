@@ -18,6 +18,7 @@ local abastecimento = mod.import("lib/abastecimento.lua")
 local fabricacao = mod.import("lib/fabricacao.lua")
 local chassi = mod.import("lib/chassi.lua")
 local maquina = mod.import("lib/maquina.lua")
+local espera = mod.import("lib/espera.lua")
 
 -- Onde a bateria monta as redes.
 --
@@ -587,12 +588,12 @@ TESTES.cano_fabricador_oferece_o_padrao = function(ctx)
            "o padrao deveria ter tabua nos slots 1 e 4")
 
     local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
-    local padroes = chassi.padroes_na_rede(ctx, nos)
-    exigir(#padroes == 1, "a rede deveria conhecer 1 padrao, conhece " .. #padroes)
-    exigir(padroes[1].saida.item == "minecraft:stick",
-           "o padrao deveria fazer vara, faz " .. tostring(padroes[1].saida.item))
 
-    -- E a arvore usa o padrao do cano: so ha tora na rede, e mesmo assim a vara sai.
+    -- A arvore usa o padrao do cano: so ha tora na rede, e mesmo assim a vara sai. Isso ja prova
+    -- que o padrao foi encontrado, entao `padroes_na_rede` nao e chamado a parte -- a chamada
+    -- separada custava uma varredura inteira da rede no mesmo callback, e o caso estourava os 20 ms
+    -- de forma intermitente, sempre logo depois de o servidor subir, quando o chunk ainda nao esta
+    -- carregado. `mapa_de_slots_da_maquina` cobre a lista em separado.
     local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:stick", 4)
     exigir(atendido == 4, "deveria atender 4 varas, atendeu " .. atendido
                           .. " (" .. tostring(motivo) .. ")")
@@ -708,6 +709,16 @@ TESTES.mapa_de_slots_da_maquina = function(ctx)
     -- por isso que listar exige saber o tamanho, e nao so o conteudo.
     local slots = maquina.listar(ctx, fab, forno)
     exigir(#slots == 3, "a fornalha deveria ter 3 slots, listou " .. #slots)
+
+    -- E cada um sabe onde aparece na tela da propria fornalha: e o que permite a tela de
+    -- configuracao ter a forma da maquina em vez de uma fileira. Sem jogador no servidor a leitura
+    -- e recusada, e ai a tela cai na fileira -- por isso o caso aceita as duas respostas.
+    local comPosicao = 0
+    for _, s in ipairs(slots) do
+        if s.x ~= nil and s.y ~= nil then comPosicao = comPosicao + 1 end
+    end
+    exigir(comPosicao == 0 or comPosicao == 3,
+           "ou todos os slots tem posicao ou nenhum tem, veio " .. comPosicao)
     for _, s in ipairs(slots) do
         exigir(s.papel == "nenhum", "slot " .. s.slot .. " nao devia ter papel ainda")
     end
@@ -732,6 +743,636 @@ TESTES.mapa_de_slots_da_maquina = function(ctx)
     ctx.server.set_block("minecraft:air", forno.x, forno.y, forno.z)
     desmontar(ctx, 42, 3)
 end
+
+TESTES.papel_do_slot_gira_e_guarda_filtro = function(ctx)
+    -- O que a tela faz por clique, sem a tela: girar o papel e nao perder o filtro no caminho.
+    local r = montar(ctx, 44, 3, "logistica:terminal")
+
+    local fab = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:fabricador", fab.x, fab.y, fab.z)
+
+    local forno = { x = fab.x + 1, y = fab.y, z = fab.z }
+    ctx.server.set_block("minecraft:furnace", forno.x, forno.y, forno.z)
+
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 0, "entrada", "minecraft:iron_ore")
+
+    -- Trocar de entrada para saida mantem o filtro: e o que se espera de um ajuste, e perde-lo
+    -- obrigaria a redizer o item a cada clique errado.
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 0, "saida", "minecraft:iron_ore")
+    exigir(maquina.saida_para(ctx, fab, "minecraft:iron_ore") == 0,
+           "o slot 0 deveria ser saida de ferro")
+    exigir(maquina.entrada_para(ctx, fab, "minecraft:iron_ore") == nil,
+           "o slot 0 nao e mais entrada")
+
+    -- E "nenhum" apaga o mapa daquele slot, filtro junto.
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 0, "nenhum")
+    exigir(maquina.saida_para(ctx, fab, "minecraft:iron_ore") == nil,
+           "o slot 0 nao devia ter papel nenhum")
+    exigir(not maquina.tem_mapa(ctx, fab.x, fab.y, fab.z),
+           "o mapa deveria ter ficado vazio")
+
+    ctx.server.set_block("minecraft:air", forno.x, forno.y, forno.z)
+    desmontar(ctx, 44, 3)
+end
+
+TESTES.mapa_da_maquina_vira_receita = function(ctx)
+    -- **O mapa e uma receita.** Dizer "slot 0 recebe pedra, slot 2 devolve cascalho" e dizer que
+    -- este cano faz cascalho de pedra -- e era isso que faltava: o mapa existia, a rede nao o lia,
+    -- e configurar a maquina inteira nao registrava nada.
+    local r = montar(ctx, 46, 3, "logistica:terminal")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 16)
+
+    local fab = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:fabricador", fab.x, fab.y, fab.z)
+
+    -- A maquina, com o produto ja dentro -- e o que um moedor teria depois de moer.
+    --
+    -- O cascalho vai para o slot 1 **de proposito**: e o slot que o mapa declara como saida. Sem
+    -- dizer o slot ele cai no 0, que e a entrada -- e ai a pedra nao tem onde entrar, porque um
+    -- slot com item so aceita mais do mesmo. Foi assim que este caso falhou na primeira escrita, e
+    -- a recusa estava certa: quem montou a maquina errada fui eu.
+    local moedor = { x = fab.x + 1, y = fab.y, z = fab.z }
+
+    -- Ar antes do bau **de proposito**: pousar um bau sobre um bau que ja existe nao zera o
+    -- inventario, e o caso deixa restos quando falha no meio -- a limpeza dele mora no fim. O run
+    -- seguinte encontrava o slot de entrada ja ocupado e a maquina recusava a pedra, o que parecia
+    -- defeito do roteamento e era sujeira do teste anterior.
+    ctx.server.set_block("minecraft:air", moedor.x, moedor.y, moedor.z)
+    ctx.server.set_block("minecraft:chest", moedor.x, moedor.y, moedor.z)
+    ctx.server.insert_into(moedor.x, moedor.y, moedor.z, "minecraft:gravel", 8, 1)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    -- Sem mapa e sem padrao, a rede nao sabe fazer nada com esse cano.
+    exigir(#chassi.padroes_na_rede(ctx, nos) == 0,
+           "sem mapa nem padrao, o cano nao devia oferecer receita")
+
+    -- O jogador mapeia: pedra entra, cascalho sai. Nenhum padrao 3x3 e montado.
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 0, "entrada", "minecraft:cobblestone")
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 1, "saida", "minecraft:gravel")
+
+    local padroes = chassi.padroes_na_rede(ctx, nos)
+    exigir(#padroes == 1, "o mapa deveria virar receita, achou " .. #padroes)
+    exigir(padroes[1].saida.item == "minecraft:gravel",
+           "deveria produzir cascalho, produz " .. tostring(padroes[1].saida.item))
+
+    -- E a arvore de pedido usa como qualquer outra.
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:gravel", 1)
+    exigir(atendido == 1, "deveria atender 1 cascalho, atendeu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+    exigir(plano.retirar["minecraft:cobblestone"] == 1,
+           "deveria sair 1 pedra, sai " .. tostring(plano.retirar["minecraft:cobblestone"]))
+
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 1, "deveria ficar pronto 1 cascalho, ficaram " .. pronto)
+    exigir(quanto(ctx, moedor, "minecraft:cobblestone") == 1,
+           "a pedra deveria ter entrado na maquina")
+    exigir(quanto(ctx, moedor, "minecraft:gravel") == 7,
+           "o cascalho deveria ter saido da maquina, sobrou "
+           .. quanto(ctx, moedor, "minecraft:gravel"))
+
+    ctx.server.set_block("minecraft:air", moedor.x, moedor.y, moedor.z)
+    desmontar(ctx, 46, 3)
+end
+
+TESTES.mapa_conta_quantos_itens_entram = function(ctx)
+    -- **Um mapa que so sabe dizer "um de cada" nao descreve quase nenhuma receita.**
+    --
+    -- Duas entradas com contas diferentes, e a saida com a sua: e o caso que o mapa antigo nao
+    -- conseguia escrever, e por isso a rede so alcancava maquina que fosse um para um.
+    local r = montar(ctx, 50, 3, "logistica:terminal")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 32)
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:stick", 16)
+
+    local fab = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:fabricador", fab.x, fab.y, fab.z)
+
+    -- Ar antes do bau: pousar bau sobre bau nao zera o inventario, e um caso que falhe no meio
+    -- deixa restos para o run seguinte encontrar no slot de entrada.
+    local moedor = { x = fab.x + 1, y = fab.y, z = fab.z }
+    ctx.server.set_block("minecraft:air", moedor.x, moedor.y, moedor.z)
+    ctx.server.set_block("minecraft:chest", moedor.x, moedor.y, moedor.z)
+    ctx.server.insert_into(moedor.x, moedor.y, moedor.z, "minecraft:stone_pickaxe", 4, 2)
+
+    -- Tres pedras e duas varas viram uma picareta: as contas sao diferentes entre si e diferentes
+    -- de um, que e o que separa este caso do anterior.
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 0, "entrada", "minecraft:cobblestone", 3)
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 1, "entrada", "minecraft:stick", 2)
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 2, "saida", "minecraft:stone_pickaxe", 1)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    local padroes = chassi.padroes_na_rede(ctx, nos)
+    exigir(#padroes == 1, "o mapa deveria virar receita, achou " .. #padroes)
+
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:stone_pickaxe", 1)
+    exigir(atendido == 1, "deveria atender 1 picareta, atendeu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+    exigir(plano.retirar["minecraft:cobblestone"] == 3,
+           "deveria sair 3 pedras, sai " .. tostring(plano.retirar["minecraft:cobblestone"]))
+    exigir(plano.retirar["minecraft:stick"] == 2,
+           "deveria sair 2 varas, sai " .. tostring(plano.retirar["minecraft:stick"]))
+
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 1, "deveria ficar pronta 1 picareta, ficaram " .. pronto)
+    exigir(quanto(ctx, moedor, "minecraft:cobblestone") == 3,
+           "as tres pedras deveriam ter entrado, entraram "
+           .. quanto(ctx, moedor, "minecraft:cobblestone"))
+    exigir(quanto(ctx, moedor, "minecraft:stick") == 2,
+           "as duas varas deveriam ter entrado, entraram "
+           .. quanto(ctx, moedor, "minecraft:stick"))
+
+    ctx.server.set_block("minecraft:air", moedor.x, moedor.y, moedor.z)
+    desmontar(ctx, 50, 3)
+end
+
+TESTES.maquina_recebe_um_lote_por_vez = function(ctx)
+    -- **Pedir dezesseis nao pode despejar dezesseis lotes na maquina.**
+    --
+    -- O `1x` do mapa era respeitado por lote, e ninguem limitava quantos lotes iam juntos: pedir
+    -- dezesseis carvoes mandava dezesseis troncos para o slot de entrada de uma vez. A maquina
+    -- ficava com material para dezesseis ciclos que ela nao ia executar -- a rede pede o produto
+    -- no mesmo tique --, e a madeira ficava presa la dentro.
+    local r = montar(ctx, 54, 3, "logistica:terminal")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 32)
+
+    local fab = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:fabricador", fab.x, fab.y, fab.z)
+
+    local moedor = { x = fab.x + 1, y = fab.y, z = fab.z }
+    ctx.server.set_block("minecraft:air", moedor.x, moedor.y, moedor.z)
+    ctx.server.set_block("minecraft:chest", moedor.x, moedor.y, moedor.z)
+    ctx.server.insert_into(moedor.x, moedor.y, moedor.z, "minecraft:gravel", 8, 1)
+
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 0, "entrada", "minecraft:cobblestone", 1)
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 1, "saida", "minecraft:gravel", 1)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    -- Pede dezesseis; o plano tem que prometer um, e nao dezesseis.
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:gravel", 16)
+    exigir(atendido == 1, "com maquina no caminho deveria atender 1 de 16, atendeu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+    exigir(plano.retirar["minecraft:cobblestone"] == 1,
+           "deveria sair 1 pedra da rede, sai "
+           .. tostring(plano.retirar["minecraft:cobblestone"]))
+
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 1, "deveria ficar pronto 1 cascalho, ficaram " .. pronto)
+
+    -- E o teto vale na maquina tambem: uma pedra dentro, e nao dezesseis.
+    exigir(quanto(ctx, moedor, "minecraft:cobblestone") == 1,
+           "so 1 pedra deveria ter entrado na maquina, entraram "
+           .. quanto(ctx, moedor, "minecraft:cobblestone"))
+
+    ctx.server.set_block("minecraft:air", moedor.x, moedor.y, moedor.z)
+    desmontar(ctx, 54, 3)
+end
+
+TESTES.cadeia_de_duas_maquinas_com_recursao = function(ctx)
+    -- **Uma maquina alimentando outra.**
+    --
+    -- A primeira faz cascalho de pedra; a segunda faz pederneira de cascalho. A rede so tem pedra,
+    -- entao atender o pedido exige descer um nivel: fabricar o cascalho para so entao fabricar a
+    -- pederneira. E o caso que separa "a arvore resolve receitas" de "a arvore resolve receitas
+    -- que passam por maquinas de verdade".
+    --
+    -- Tudo um para um de proposito: com lotes maiores este caso mediria duas coisas ao mesmo
+    -- tempo, e a que falhasse levaria a culpa da outra.
+    local r = montar(ctx, 58, 5, "logistica:terminal")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 32)
+
+    -- Primeira maquina: pedra -> cascalho.
+    local fabA = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:fabricador", fabA.x, fabA.y, fabA.z)
+    local moedorA = { x = fabA.x + 1, y = fabA.y, z = fabA.z }
+    ctx.server.set_block("minecraft:air", moedorA.x, moedorA.y, moedorA.z)
+    ctx.server.set_block("minecraft:chest", moedorA.x, moedorA.y, moedorA.z)
+    ctx.server.insert_into(moedorA.x, moedorA.y, moedorA.z, "minecraft:gravel", 8, 1)
+    maquina.definir(ctx, fabA.x, fabA.y, fabA.z, 0, "entrada", "minecraft:cobblestone", 1)
+    maquina.definir(ctx, fabA.x, fabA.y, fabA.z, 1, "saida", "minecraft:gravel", 1)
+
+    -- Segunda maquina: cascalho -> pederneira.
+    local fabB = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 4 }
+    ctx.server.set_block("logistica:fabricador", fabB.x, fabB.y, fabB.z)
+    local moedorB = { x = fabB.x + 1, y = fabB.y, z = fabB.z }
+    ctx.server.set_block("minecraft:air", moedorB.x, moedorB.y, moedorB.z)
+    ctx.server.set_block("minecraft:chest", moedorB.x, moedorB.y, moedorB.z)
+    ctx.server.insert_into(moedorB.x, moedorB.y, moedorB.z, "minecraft:flint", 8, 1)
+    maquina.definir(ctx, fabB.x, fabB.y, fabB.z, 0, "entrada", "minecraft:gravel", 1)
+    maquina.definir(ctx, fabB.x, fabB.y, fabB.z, 1, "saida", "minecraft:flint", 1)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    local padroes = chassi.padroes_na_rede(ctx, nos)
+    exigir(#padroes == 2, "as duas maquinas deveriam oferecer receita, acharam " .. #padroes)
+
+    -- A rede nao tem cascalho: o unico caminho para a pederneira passa pela primeira maquina.
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:flint", 1)
+    exigir(atendido == 1, "deveria atender 1 pederneira, atendeu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+    exigir(#plano.fabricar == 2, "o plano deveria ter dois passos, tem " .. #plano.fabricar)
+    exigir(plano.retirar["minecraft:cobblestone"] == 1,
+           "deveria sair 1 pedra da rede, sai "
+           .. tostring(plano.retirar["minecraft:cobblestone"]))
+
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 1, "deveria ficar pronta 1 pederneira, ficaram " .. pronto)
+
+    -- **Cada maquina tem que ter recebido o seu.** Sem isto, o passo do meio existe so no plano: a
+    -- pedra sai da rede, a pederneira aparece, e a primeira maquina nunca foi usada.
+    exigir(quanto(ctx, moedorA, "minecraft:cobblestone") == 1,
+           "a pedra deveria ter entrado na primeira maquina, entraram "
+           .. quanto(ctx, moedorA, "minecraft:cobblestone"))
+    exigir(quanto(ctx, moedorB, "minecraft:gravel") == 1,
+           "o cascalho deveria ter entrado na segunda maquina, entraram "
+           .. quanto(ctx, moedorB, "minecraft:gravel"))
+
+    ctx.server.set_block("minecraft:air", moedorA.x, moedorA.y, moedorA.z)
+    ctx.server.set_block("minecraft:air", moedorB.x, moedorB.y, moedorB.z)
+    desmontar(ctx, 58, 5)
+end
+
+
+TESTES.cadeia_de_tres_maquinas = function(ctx)
+    -- **Tres niveis, e nao dois.**
+    --
+    -- Dois niveis provam que a arvore desce; tres provam que ela desce mais de uma vez, que e onde
+    -- um laco escrito para o caso de dois costuma parar. Pedra -> cascalho -> pederneira ->
+    -- flecha, com a rede tendo so a pedra.
+    local r = montar(ctx, 62, 4, "logistica:terminal")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 32)
+
+    local function maquina_em(recuo, entrada, saida, estoque)
+        local fab = { x = r.fim.x, y = r.fim.y, z = r.fim.z - recuo }
+        ctx.server.set_block("logistica:fabricador", fab.x, fab.y, fab.z)
+
+        local caixa = { x = fab.x + 1, y = fab.y, z = fab.z }
+        ctx.server.set_block("minecraft:air", caixa.x, caixa.y, caixa.z)
+        ctx.server.set_block("minecraft:chest", caixa.x, caixa.y, caixa.z)
+        ctx.server.insert_into(caixa.x, caixa.y, caixa.z, estoque, 8, 1)
+
+        maquina.definir_varios(ctx, fab.x, fab.y, fab.z, {
+            { slot = 0, papel = "entrada", item = entrada, count = 1 },
+            { slot = 1, papel = "saida", item = saida, count = 1 },
+        })
+        return caixa
+    end
+
+    -- Canos vizinhos, e nao de dois em dois: a rede menor cabe no orcamento de 20 ms com folga,
+    -- e o que este caso mede -- tres niveis de recursao -- nao depende da distancia entre eles.
+    local caixaA = maquina_em(1, "minecraft:cobblestone", "minecraft:gravel", "minecraft:gravel")
+    local caixaB = maquina_em(2, "minecraft:gravel", "minecraft:flint", "minecraft:flint")
+    local caixaC = maquina_em(3, "minecraft:flint", "minecraft:arrow", "minecraft:arrow")
+
+    -- Montar tres maquinas ja consome o tique; o resto vem no proximo, com orcamento inteiro.
+    return function(ctx)
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:arrow", 1)
+    exigir(atendido == 1, "deveria atender 1 flecha, atendeu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+    exigir(#plano.fabricar == 3, "o plano deveria ter tres passos, tem " .. #plano.fabricar)
+
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 1, "deveria ficar pronta 1 flecha, ficaram " .. pronto)
+
+    -- As tres maquinas tem que ter recebido o seu, e nao so a ultima.
+    exigir(quanto(ctx, caixaA, "minecraft:cobblestone") == 1,
+           "a pedra deveria estar na primeira maquina, tem "
+           .. quanto(ctx, caixaA, "minecraft:cobblestone"))
+    exigir(quanto(ctx, caixaB, "minecraft:gravel") == 1,
+           "o cascalho deveria estar na segunda maquina, tem "
+           .. quanto(ctx, caixaB, "minecraft:gravel"))
+    exigir(quanto(ctx, caixaC, "minecraft:flint") == 1,
+           "a pederneira deveria estar na terceira maquina, tem "
+           .. quanto(ctx, caixaC, "minecraft:flint"))
+
+    ctx.server.set_block("minecraft:air", caixaA.x, caixaA.y, caixaA.z)
+    ctx.server.set_block("minecraft:air", caixaB.x, caixaB.y, caixaB.z)
+    ctx.server.set_block("minecraft:air", caixaC.x, caixaC.y, caixaC.z)
+    desmontar(ctx, 62, 4)
+    end
+end
+
+TESTES.cadeia_para_quando_a_maquina_do_meio_nao_devolve = function(ctx)
+    -- **Uma maquina que ainda nao terminou nao pode virar produto no fim da linha.**
+    --
+    -- E o caso da fornalha: o material entra, ela leva tempo, e a rede pede o produto no mesmo
+    -- tique. Se a cadeia seguisse assim mesmo, a segunda maquina receberia um cascalho que nao
+    -- existe e a pederneira sairia do estoque dela -- item aparecendo do nada, de novo.
+    local r = montar(ctx, 66, 5, "logistica:terminal")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 32)
+
+    local fabA = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:fabricador", fabA.x, fabA.y, fabA.z)
+    local caixaA = { x = fabA.x + 1, y = fabA.y, z = fabA.z }
+    ctx.server.set_block("minecraft:air", caixaA.x, caixaA.y, caixaA.z)
+    ctx.server.set_block("minecraft:chest", caixaA.x, caixaA.y, caixaA.z)
+    -- Sem estoque de cascalho: esta maquina nao tem o que devolver.
+    maquina.definir(ctx, fabA.x, fabA.y, fabA.z, 0, "entrada", "minecraft:cobblestone", 1)
+    maquina.definir(ctx, fabA.x, fabA.y, fabA.z, 1, "saida", "minecraft:gravel", 1)
+
+    local fabB = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 4 }
+    ctx.server.set_block("logistica:fabricador", fabB.x, fabB.y, fabB.z)
+    local caixaB = { x = fabB.x + 1, y = fabB.y, z = fabB.z }
+    ctx.server.set_block("minecraft:air", caixaB.x, caixaB.y, caixaB.z)
+    ctx.server.set_block("minecraft:chest", caixaB.x, caixaB.y, caixaB.z)
+    ctx.server.insert_into(caixaB.x, caixaB.y, caixaB.z, "minecraft:flint", 8, 1)
+    maquina.definir(ctx, fabB.x, fabB.y, fabB.z, 0, "entrada", "minecraft:gravel", 1)
+    maquina.definir(ctx, fabB.x, fabB.y, fabB.z, 1, "saida", "minecraft:flint", 1)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    local atendido, _, plano = fabricacao.planejar(ctx, nos, "minecraft:flint", 1)
+    exigir(atendido == 1, "o plano deveria acreditar que da, atendeu " .. atendido)
+
+    local pronto, erro = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 0, "nao deveria produzir nada, produziu " .. pronto)
+    exigir(erro ~= nil and string.find(erro, "ainda nao devolveu") ~= nil,
+           "o motivo deveria dizer que a maquina nao devolveu, disse " .. tostring(erro))
+
+    -- E a pederneira da segunda maquina tem que continuar la: ela nao foi produzida.
+    exigir(quanto(ctx, caixaB, "minecraft:flint") == 8,
+           "a pederneira nao podia ter saido da segunda maquina, sobraram "
+           .. quanto(ctx, caixaB, "minecraft:flint"))
+    -- A pedra fica na primeira, como uma fornalha faria.
+    exigir(quanto(ctx, caixaA, "minecraft:cobblestone") == 1,
+           "a pedra deveria ter ficado na primeira maquina, tem "
+           .. quanto(ctx, caixaA, "minecraft:cobblestone"))
+
+    ctx.server.set_block("minecraft:air", caixaA.x, caixaA.y, caixaA.z)
+    ctx.server.set_block("minecraft:air", caixaB.x, caixaB.y, caixaB.z)
+    desmontar(ctx, 66, 5)
+end
+
+TESTES.cadeia_multiplica_as_quantidades_do_mapa = function(ctx)
+    -- **A conta de um nivel multiplica a do nivel de baixo.**
+    --
+    -- Uma pederneira come dois cascalhos, e cada cascalho come tres pedras: a rede tem que tirar
+    -- seis pedras, e nao duas nem tres. E a conta que um mapa de "um de cada" nunca precisou
+    -- fazer, e onde um erro de multiplicacao passa despercebido.
+    local r = montar(ctx, 70, 3, "logistica:terminal")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 64)
+
+    local fabA = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 1 }
+    ctx.server.set_block("logistica:fabricador", fabA.x, fabA.y, fabA.z)
+    local caixaA = { x = fabA.x + 1, y = fabA.y, z = fabA.z }
+    ctx.server.set_block("minecraft:air", caixaA.x, caixaA.y, caixaA.z)
+    ctx.server.set_block("minecraft:chest", caixaA.x, caixaA.y, caixaA.z)
+    ctx.server.insert_into(caixaA.x, caixaA.y, caixaA.z, "minecraft:gravel", 16, 1)
+    maquina.definir_varios(ctx, fabA.x, fabA.y, fabA.z, {
+        { slot = 0, papel = "entrada", item = "minecraft:cobblestone", count = 3 },
+        { slot = 1, papel = "saida", item = "minecraft:gravel", count = 1 },
+    })
+
+    local fabB = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:fabricador", fabB.x, fabB.y, fabB.z)
+    local caixaB = { x = fabB.x + 1, y = fabB.y, z = fabB.z }
+    ctx.server.set_block("minecraft:air", caixaB.x, caixaB.y, caixaB.z)
+    ctx.server.set_block("minecraft:chest", caixaB.x, caixaB.y, caixaB.z)
+    ctx.server.insert_into(caixaB.x, caixaB.y, caixaB.z, "minecraft:flint", 8, 1)
+    maquina.definir_varios(ctx, fabB.x, fabB.y, fabB.z, {
+        { slot = 0, papel = "entrada", item = "minecraft:gravel", count = 2 },
+        { slot = 1, papel = "saida", item = "minecraft:flint", count = 1 },
+    })
+
+    return function(ctx)
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:flint", 1)
+    exigir(atendido == 1, "deveria atender 1 pederneira, atendeu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+    exigir(plano.retirar["minecraft:cobblestone"] == 6,
+           "duas vezes tres da seis pedras, o plano tirou "
+           .. tostring(plano.retirar["minecraft:cobblestone"]))
+
+    ctx.server.set_block("minecraft:air", caixaA.x, caixaA.y, caixaA.z)
+    ctx.server.set_block("minecraft:air", caixaB.x, caixaB.y, caixaB.z)
+    desmontar(ctx, 70, 3)
+    end
+end
+
+
+TESTES.distribuicao_enche_o_minimo_antes_de_espalhar = function(ctx)
+    -- **A conta do mapa e um minimo para a maquina rodar, e nao um teto.**
+    --
+    -- A regra tem duas passadas, e a ordem entre elas e o que importa: primeiro um a um ate cada
+    -- slot atingir o minimo, e so depois o excedente. Comecar a encher o segundo slot antes de o
+    -- primeiro fechar o minimo daria dois slots incompletos e uma maquina que nao roda.
+    local m = mod.import("lib/maquina.lua")
+    local duas = { { slot = 0, count = 1 }, { slot = 1, count = 1 } }
+
+    -- Um item so, dois slots pedindo um: vai inteiro para o primeiro.
+    local plano, sobra = m.distribuir(duas, 1, 1)
+    exigir(plano[1] == 1 and plano[2] == 0,
+           "um item devia ir para o primeiro slot, foi " .. plano[1] .. "/" .. plano[2])
+    exigir(sobra == 0, "nao devia sobrar nada, sobrou " .. sobra)
+
+    -- Dois itens: um para cada, que e o minimo dos dois.
+    plano = m.distribuir(duas, 2, 1)
+    exigir(plano[1] == 1 and plano[2] == 1,
+           "dois itens deviam ir um para cada, foram " .. plano[1] .. "/" .. plano[2])
+
+    -- Seis itens: os dois minimos primeiro, e o excedente espalhado.
+    plano = m.distribuir(duas, 6, 1)
+    exigir(plano[1] + plano[2] == 6, "os seis deviam entrar, entraram "
+                                     .. (plano[1] + plano[2]))
+    exigir(plano[1] >= 1 and plano[2] >= 1,
+           "os dois minimos deviam estar garantidos, ficou " .. plano[1] .. "/" .. plano[2])
+
+    -- Minimos diferentes: tres num lado e um no outro.
+    local desiguais = { { slot = 0, count = 3 }, { slot = 1, count = 1 } }
+    plano = m.distribuir(desiguais, 4, 1)
+    exigir(plano[1] == 3 and plano[2] == 1,
+           "com quatro itens cada slot devia receber o seu minimo, ficou "
+           .. plano[1] .. "/" .. plano[2])
+
+    -- Material a menos que o minimo total: o primeiro fecha o dele antes de o segundo comecar.
+    plano = m.distribuir(desiguais, 2, 1)
+    exigir(plano[1] + plano[2] == 2, "os dois itens deviam ser distribuidos, foram "
+                                     .. (plano[1] + plano[2]))
+
+    -- Sem slot nenhum, tudo sobra: e o sinal de que a maquina nao tem onde receber.
+    local nenhum
+    plano, nenhum = m.distribuir({}, 5, 1)
+    exigir(nenhum == 5, "sem slot mapeado os cinco deviam sobrar, sobraram " .. nenhum)
+
+    -- E a conta e por lote: dois lotes de um minimo de dois pedem quatro.
+    local umSlot = { { slot = 0, count = 2 } }
+    plano = m.distribuir(umSlot, 4, 2)
+    exigir(plano[1] == 4, "dois lotes de dois deviam pedir quatro, pediram " .. plano[1])
+end
+
+TESTES.duas_entradas_do_mesmo_item_recebem_cada_uma = function(ctx)
+    -- **Duas entradas do mesmo item precisam ser abastecidas as duas.**
+    --
+    -- A busca antiga devolvia um slot so, escolhido com `pairs` -- que em Lua nao tem ordem. Tudo
+    -- caia sempre na mesma entrada e a outra ficava vazia; qual das duas nem era estavel entre
+    -- execucoes. Este caso monta exatamente isso e confere os dois slots.
+    local r = montar(ctx, 74, 3, "logistica:terminal")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 32)
+
+    local fab = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 2 }
+    ctx.server.set_block("logistica:fabricador", fab.x, fab.y, fab.z)
+
+    local caixa = { x = fab.x + 1, y = fab.y, z = fab.z }
+    ctx.server.set_block("minecraft:air", caixa.x, caixa.y, caixa.z)
+    ctx.server.set_block("minecraft:chest", caixa.x, caixa.y, caixa.z)
+    ctx.server.insert_into(caixa.x, caixa.y, caixa.z, "minecraft:gravel", 8, 2)
+
+    -- Dois slots de entrada para o mesmo item, um em cada lado.
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 0, "entrada", "minecraft:cobblestone", 1)
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 1, "entrada", "minecraft:cobblestone", 1)
+    maquina.definir(ctx, fab.x, fab.y, fab.z, 2, "saida", "minecraft:gravel", 1)
+
+    -- A ordem tem que ser crescente e estavel, e nao o que o `pairs` devolver.
+    local entradas = maquina.entradas_para(ctx, fab, "minecraft:cobblestone")
+    exigir(#entradas == 2, "deveria achar duas entradas, achou " .. #entradas)
+    exigir(entradas[1].slot == 0 and entradas[2].slot == 1,
+           "as entradas deveriam vir em ordem de slot, vieram "
+           .. entradas[1].slot .. " e " .. entradas[2].slot)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:gravel", 1)
+    exigir(atendido == 1, "deveria atender 1 cascalho, atendeu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 1, "deveria ficar pronto 1 cascalho, ficaram " .. pronto)
+
+    -- Duas pedras pedidas, uma em cada slot -- e nao duas empilhadas num so.
+    local no_zero, no_um = 0, 0
+    for _, entrada in ipairs(ctx.server.container_at(caixa.x, caixa.y, caixa.z)) do
+        if entrada.item == "minecraft:cobblestone" then
+            if entrada.slot == 0 then no_zero = entrada.count end
+            if entrada.slot == 1 then no_um = entrada.count end
+        end
+    end
+    exigir(no_zero == 1 and no_um == 1,
+           "cada entrada deveria ter recebido uma pedra, receberam "
+           .. no_zero .. " e " .. no_um)
+
+    ctx.server.set_block("minecraft:air", caixa.x, caixa.y, caixa.z)
+    desmontar(ctx, 74, 3)
+end
+
+
+TESTES.pedidos_repetidos_entram_na_fila_do_cano = function(ctx)
+    -- **Tres pedidos do mesmo item viram tres ordens, e nao um atendido e dois perdidos.**
+    --
+    -- Com uma espera unica por cano, o primeiro pedido ocupava o cano e os outros eram recusados --
+    -- enquanto o material deles ja estava dentro da maquina, produzindo para ninguem recolher. E o
+    -- desenho do original: uma fila de ordens no cano, cada uma entregue quando ficar pronta.
+    local r = montar(ctx, 78, 3, "logistica:terminal")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 32)
+
+    local fab = { x = r.fim.x, y = r.fim.y, z = r.fim.z - 1 }
+    ctx.server.set_block("logistica:fabricador", fab.x, fab.y, fab.z)
+
+    -- Maquina sem estoque de saida: ela recebe e nao devolve, que e o que poe o cano em espera.
+    local caixa = { x = fab.x + 1, y = fab.y, z = fab.z }
+    ctx.server.set_block("minecraft:air", caixa.x, caixa.y, caixa.z)
+    ctx.server.set_block("minecraft:chest", caixa.x, caixa.y, caixa.z)
+
+    maquina.definir_varios(ctx, fab.x, fab.y, fab.z, {
+        { slot = 0, papel = "entrada", item = "minecraft:cobblestone", count = 1 },
+        { slot = 1, papel = "saida", item = "minecraft:gravel", count = 1 },
+    })
+
+    return function(ctx)
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    for volta = 1, 3 do
+        local _, _, plano = fabricacao.planejar(ctx, nos, "minecraft:gravel", 1)
+        local pronto, motivo = fabricacao.executar(ctx, nos, plano, r.fim)
+        exigir(pronto == 0, "a maquina nao tem o que devolver, nao devia produzir")
+        exigir(motivo ~= nil and string.find(motivo, "processando") ~= nil,
+               "o motivo devia dizer que esta processando, disse " .. tostring(motivo))
+        exigir(espera.pendentes(ctx, fab.x, fab.y, fab.z) == volta,
+               "a fila devia ter " .. volta .. " ordem(ns), tem "
+               .. espera.pendentes(ctx, fab.x, fab.y, fab.z))
+    end
+
+    -- Cada pedido levou o seu material: tres ordens, tres pedras dentro da maquina.
+    exigir(quanto(ctx, caixa, "minecraft:cobblestone") == 3,
+           "as tres pedras deviam ter entrado, entraram "
+           .. quanto(ctx, caixa, "minecraft:cobblestone"))
+
+    -- A maquina termina uma: a fila anda e a ordem sai.
+    ctx.server.insert_into(caixa.x, caixa.y, caixa.z, "minecraft:gravel", 1, 1)
+    espera.conferir(ctx, fab.x, fab.y, fab.z)
+    exigir(espera.pendentes(ctx, fab.x, fab.y, fab.z) == 2,
+           "depois de uma entrega deviam sobrar duas ordens, sobraram "
+           .. espera.pendentes(ctx, fab.x, fab.y, fab.z))
+    exigir(quanto(ctx, r.destino, "minecraft:gravel") == 1,
+           "o cascalho devia ter sido entregue no destino, chegaram "
+           .. quanto(ctx, r.destino, "minecraft:gravel"))
+
+    ctx.server.set_block("minecraft:air", fab.x, fab.y, fab.z)
+    ctx.server.set_block("minecraft:air", caixa.x, caixa.y, caixa.z)
+    desmontar(ctx, 78, 3)
+    end
+end
+
+
+TESTES.duas_maquinas_iguais_dividem_o_trabalho = function(ctx)
+    -- **Duas maquinas que fazem a mesma coisa tem que trabalhar as duas.**
+    --
+    -- O planejador pegava a primeira oferta que servia e parava ali: montar uma segunda fornalha
+    -- nao fabricava mais rapido, so gastava ferro. Pior, com a fila da primeira cheia o pedido era
+    -- recusado com a segunda ociosa do lado. Agora vence a de fila mais curta, e pedidos seguidos
+    -- se alternam sozinhos.
+    local r = montar(ctx, 82, 4, "logistica:terminal")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 32)
+
+    local function maquina_em(recuo)
+        local fab = { x = r.fim.x, y = r.fim.y, z = r.fim.z - recuo }
+        ctx.server.set_block("logistica:fabricador", fab.x, fab.y, fab.z)
+
+        -- Sem estoque de saida: as duas recebem e nao devolvem, entao as duas ficam com fila.
+        local caixa = { x = fab.x + 1, y = fab.y, z = fab.z }
+        ctx.server.set_block("minecraft:air", caixa.x, caixa.y, caixa.z)
+        ctx.server.set_block("minecraft:chest", caixa.x, caixa.y, caixa.z)
+
+        maquina.definir_varios(ctx, fab.x, fab.y, fab.z, {
+            { slot = 0, papel = "entrada", item = "minecraft:cobblestone", count = 1 },
+            { slot = 1, papel = "saida", item = "minecraft:gravel", count = 1 },
+        })
+        return fab, caixa
+    end
+
+    local fabA, caixaA = maquina_em(1)
+    local fabB, caixaB = maquina_em(2)
+
+    return function(ctx)
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+
+    local padroes = chassi.padroes_na_rede(ctx, nos)
+    exigir(#padroes == 2, "as duas maquinas deviam oferecer a receita, acharam " .. #padroes)
+
+    -- Quatro pedidos: com o desempate por fila, dois vao para cada uma.
+    for _ = 1, 4 do
+        local _, _, plano = fabricacao.planejar(ctx, nos, "minecraft:gravel", 1)
+        fabricacao.executar(ctx, nos, plano, r.fim)
+    end
+
+    local naA = espera.pendentes(ctx, fabA.x, fabA.y, fabA.z)
+    local naB = espera.pendentes(ctx, fabB.x, fabB.y, fabB.z)
+    exigir(naA + naB == 4, "as quatro ordens deviam existir, existem " .. (naA + naB))
+    exigir(naA == 2 and naB == 2,
+           "as quatro deviam ficar dois a dois, ficaram " .. naA .. " e " .. naB)
+
+    -- E o material seguiu a ordem: cada maquina recebeu o que a fila dela pediu.
+    exigir(quanto(ctx, caixaA, "minecraft:cobblestone") == 2,
+           "a primeira devia ter duas pedras, tem " .. quanto(ctx, caixaA, "minecraft:cobblestone"))
+    exigir(quanto(ctx, caixaB, "minecraft:cobblestone") == 2,
+           "a segunda devia ter duas pedras, tem " .. quanto(ctx, caixaB, "minecraft:cobblestone"))
+
+    ctx.server.set_block("minecraft:air", fabA.x, fabA.y, fabA.z)
+    ctx.server.set_block("minecraft:air", fabB.x, fabB.y, fabB.z)
+    ctx.server.set_block("minecraft:air", caixaA.x, caixaA.y, caixaA.z)
+    ctx.server.set_block("minecraft:air", caixaB.x, caixaB.y, caixaB.z)
+    desmontar(ctx, 82, 4)
+    end
+end
+
 
 --- Roda a bateria e escreve o resultado no log.
 --
@@ -763,16 +1404,36 @@ local function rodar(ctx, so_este)
         end
 
         local nome = fila[indice]
-        mod.after(indice, function(depois)
-            local ok, erro = pcall(function() TESTES[nome](depois) end)
-            if ok then
-                passaram = passaram + 1
-                depois.log.info("LOGISTICA AUTOTESTE OK      " .. nome)
-            else
-                depois.log.warn("LOGISTICA AUTOTESTE FALHOU  " .. nome .. ": " .. tostring(erro))
-            end
-            proximo(indice + 1)
-        end)
+
+        -- **Um caso pode ocupar mais de um tique.**
+        --
+        -- Devolvendo uma funcao, ele diz "o resto vem no proximo tique" e ganha outro orcamento
+        -- inteiro. Sem isso, um caso que monta rede, configura tres maquinas e ainda planeja e
+        -- executa nao cabia nos 20 ms -- e o estouro caia num laco barato qualquer, que e onde o
+        -- contador de instrucoes bate, dando a impressao de defeito naquele trecho.
+        --
+        -- Continua um caso por tique: o que muda e que agora "um caso" pode ter mais de um passo.
+        local function passo(seguir, tique)
+            mod.after(tique, function(depois)
+                local ok, resto = pcall(function() return seguir(depois) end)
+
+                if ok and type(resto) == "function" then
+                    passo(resto, 1)
+                    return
+                end
+
+                if ok then
+                    passaram = passaram + 1
+                    depois.log.info("LOGISTICA AUTOTESTE OK      " .. nome)
+                else
+                    depois.log.warn("LOGISTICA AUTOTESTE FALHOU  " .. nome .. ": "
+                                    .. tostring(resto))
+                end
+                proximo(indice + 1)
+            end)
+        end
+
+        passo(TESTES[nome], indice)
     end
 
     proximo(1)

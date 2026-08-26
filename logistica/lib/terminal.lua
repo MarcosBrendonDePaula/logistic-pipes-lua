@@ -230,6 +230,18 @@ local function evento(ctx)
         ctx.log.info("LOGISTICA pedido item=" .. item .. " entregue=" .. entregue
                      .. " motivo=" .. tostring(motivo))
 
+        -- **E no chat de quem pediu, tambem.**
+        --
+        -- O rodape da tela some quando a tela fecha, e o log do servidor exige sair do jogo para
+        -- ler. Quem clicou em "Fazer" e ficou olhando o bau vazio nao tinha onde perguntar por que.
+        -- No chat a resposta fica: rola junto com o resto e sobrevive a tela fechar.
+        if ctx.player ~= nil then
+            ctx.player.send_message(entregue > 0
+                    and ("LOGISTICA entregue " .. entregue .. " x " .. item)
+                    or ("LOGISTICA nada entregue de " .. item .. ": "
+                        .. tostring(motivo)))
+        end
+
         if entregue > 0 then
             estado.aviso = "entregue: " .. entregue .. " x " .. item
                            .. (motivo and (" (" .. motivo .. ")") or "")

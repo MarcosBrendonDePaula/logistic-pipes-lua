@@ -30,6 +30,7 @@ local autoteste = mod.import("lib/autoteste.lua")
 local fabricacao = mod.import("lib/fabricacao.lua")
 local chassi = mod.import("lib/chassi.lua")
 local maquina = mod.import("lib/maquina.lua")
+local tela_maquina = mod.import("lib/tela_maquina.lua")
 local viagem = mod.import("lib/viagem.lua")
 
 --- Le a receita da bancada encostada num fabricador e desenha nos slots dele.
@@ -102,6 +103,7 @@ local function importar_padrao(ctx, x, y, z)
 end
 
 mod.screen("terminal", terminal.evento)
+mod.screen("maquina", tela_maquina.evento)
 
 -- O botao da janela declarada do fabricador.
 --
@@ -109,14 +111,22 @@ mod.screen("terminal", terminal.evento)
 -- em "importar" e nao em qual maquina. E o mesmo canal dos eventos de tela desenhada -- um botao e
 -- um botao, e dois canais dariam dois lugares para tratar a mesma coisa.
 local function botao_do_fabricador(ctx)
-    if ctx.ui.action ~= "click" or ctx.ui.element ~= "importar" then return end
+    if ctx.ui.action ~= "click" then return end
 
     local x, y, z = string.match(ctx.ui.value or "", "(-?%d+),(-?%d+),(-?%d+)")
     if x == nil then return end
+    x, y, z = tonumber(x), tonumber(y), tonumber(z)
 
-    local ok, mensagem = importar_padrao(ctx, tonumber(x), tonumber(y), tonumber(z))
-    if ctx.player ~= nil then ctx.player.send_message(mensagem) end
-    if ok then ctx.log.info(mensagem) else ctx.log.warn(mensagem) end
+    if ctx.ui.element == "importar" then
+        local ok, mensagem = importar_padrao(ctx, x, y, z)
+        if ctx.player ~= nil then ctx.player.send_message(mensagem) end
+        if ok then ctx.log.info(mensagem) else ctx.log.warn(mensagem) end
+
+    elseif ctx.ui.element == "maquina" then
+        -- Uma tela desenhada, e nao outra janela de container: aqui nao se move item, diz-se o que
+        -- cada slot da maquina significa. Sao coisas diferentes e cada uma tem a sua camada.
+        tela_maquina.abrir(ctx, x, y, z)
+    end
 end
 
 mod.screen("fabricador", botao_do_fabricador)
@@ -140,9 +150,10 @@ mod.screen("fabricador_mk3", botao_do_fabricador)
 --   /mod logistica importar <x> <y> <z>                le a receita da bancada ao lado
 --   /mod logistica resultado <x> <y> <z> <item> [qtd] declara o que o cano produz
 --   /mod logistica fabricantes <x> <y> <z>            quem sabe fabricar o que, na rede
---   /mod logistica maquina <x> <y> <z> [slot] [papel] [item]  mapeia os slots da maquina
+--   /mod logistica maquina <x> <y> <z> [slot] [papel] [item] [qtd]  mapeia os slots da maquina
 --   /mod logistica estado <x> <y> <z>                     conexoes daquele cano, lado a lado
 --   /mod logistica mapa <x> <y> <z>                       a rede toda, e os canos soltos
+--   /mod logistica esquecer <x> <y> <z>              apaga padrao, resultado e mapa do cano
 --   /mod logistica autoteste [caso]                       roda a bateria de verificacao
 --- Responde a quem pediu.
 --
@@ -435,7 +446,38 @@ mod.command("logistica", function(ctx)
                 local onde = "  " .. no.x .. "," .. no.y .. "," .. no.z .. " "
                              .. string.gsub(no.bloco, "^logistica:", "")
 
-                if padrao == nil then
+                -- **O mapa da maquina vem primeiro, porque e ele que vence.**
+                --
+                -- Enquanto esta lista so olhava o padrao 3x3, um cano com mapa perfeito aparecia
+                -- como "SEM PADRAO" -- e a resposta que existe justamente para separar "a rede nao
+                -- faz" de "o cano esta mal configurado" dizia a coisa errada sobre os dois. Foram
+                -- tres rodadas procurando um defeito que era esta linha calada.
+                local doMapa, saidaDoMapa = chassi.receita_do_mapa(ctx, no)
+                if doMapa ~= nil then
+                    local acoplada = chassi.maquina_de(ctx, no)
+                    local usa = {}
+                    for _, ingrediente in ipairs(fabricacao.ingredientes_do_padrao(doMapa)) do
+                        usa[#usa + 1] = ingrediente.count .. "x"
+                                        .. string.gsub(ingrediente.item, "^minecraft:", "")
+                    end
+
+                    if acoplada == nil then
+                        -- Mapa sem maquina e o engano mais facil de cometer: mapeia-se o cano
+                        -- errado, e o mapa fica guardado sem nunca virar receita. Dizer isso e o
+                        -- que evita procurar o defeito em outro lugar.
+                        responder(ctx, onde .. ": mapa de " .. table.concat(usa, "+")
+                                       .. " -> " .. string.gsub(saidaDoMapa.item, "^minecraft:", "")
+                                       .. " -- SEM MAQUINA ACOPLADA; o mapa nao vale nada aqui",
+                                  true)
+                    else
+                        prontos = prontos + 1
+                        responder(ctx, onde .. ": mapa " .. table.concat(usa, "+")
+                                       .. " -> " .. saidaDoMapa.count .. "x"
+                                       .. string.gsub(saidaDoMapa.item, "^minecraft:", "")
+                                       .. " na maquina em " .. acoplada.x .. ","
+                                       .. acoplada.y .. "," .. acoplada.z)
+                    end
+                elseif padrao == nil then
                     responder(ctx, onde .. ": SEM PADRAO -- os nove slots estao vazios", true)
                 else
                     -- Quantos itens diferentes o padrao usa, para a linha caber no chat.
@@ -505,13 +547,17 @@ mod.command("logistica", function(ctx)
             local item = args[7]
             if item ~= nil and not string.find(item, ":") then item = "minecraft:" .. item end
 
-            local ok, erro = maquina.definir(ctx, x, y, z, slot, papel, item)
+            -- A quantidade e o oitavo argumento, opcional: sem ela vale um, que e o que todo
+            -- mapa escrito antes desta linha significava.
+            local quantidade = tonumber(args[8]) or 1
+
+            local ok, erro = maquina.definir(ctx, x, y, z, slot, papel, item, quantidade)
             if not ok then
                 responder(ctx, "LOGISTICA " .. erro, true)
                 return
             end
             responder(ctx, "LOGISTICA slot " .. slot .. " = " .. papel
-                           .. (item and (" (" .. item .. ")") or ""))
+                           .. (item and (" " .. quantidade .. "x" .. item) or ""))
             return
         end
 
@@ -524,11 +570,12 @@ mod.command("logistica", function(ctx)
                            .. (s.item and (s.count .. "x" .. string.gsub(s.item, "^minecraft:", ""))
                                or "(vazio)")
                            .. "  [" .. s.papel .. "]"
-                           .. (s.filtro and (" so " .. string.gsub(s.filtro, "^minecraft:", ""))
+                           .. (s.filtro and (" so " .. s.quantidade .. "x"
+                                             .. string.gsub(s.filtro, "^minecraft:", ""))
                                or ""))
         end
         responder(ctx, "LOGISTICA use: /mod logistica maquina <x> <y> <z> <slot>"
-                       .. " entrada|saida|nenhum [item]")
+                       .. " entrada|saida|nenhum [item] [quantidade]")
         return
     end
 
@@ -564,6 +611,23 @@ mod.command("logistica", function(ctx)
     if acao == "importar" then
         local ok, mensagem = importar_padrao(ctx, x, y, z)
         responder(ctx, mensagem, not ok)
+        return
+    end
+
+    if acao == "esquecer" then
+        -- **Apagar o que um cano aprendeu.**
+        --
+        -- O `block_data` morre com o bloco -- e uma block entity --, entao nao ha sujeira de cano
+        -- quebrado. O que sobra e o contrario: um cano vivo que ainda carrega o padrao de um teste
+        -- de meia hora atras, e a lista de fabricantes o anuncia como se fosse decisao de alguem.
+        -- Quebrar o cano para esquecer e caro demais para uma configuracao que se digita.
+        local dados = ctx.server.get_block_data(x, y, z)
+        dados.padrao = nil
+        dados.resultado = nil
+        dados.maquina = nil
+        ctx.server.set_block_data(x, y, z, dados)
+        responder(ctx, "LOGISTICA " .. x .. "," .. y .. "," .. z
+                       .. " esqueceu padrao, resultado e mapa de maquina")
         return
     end
 

@@ -112,6 +112,17 @@ local function ingredientes_de(receita, tem)
     return lista
 end
 
+--- Quantas ordens o cano daquela oferta ja tem esperando.
+--
+-- O `pcall` esta ai porque a leitura falha num cano que nao declarou `block_data`, e um erro aqui
+-- derrubaria o planejamento inteiro por causa de uma conta de desempate.
+local function espera_do_cano(ctx, no)
+    local ok, quantas = pcall(function()
+        return mod.import("lib/espera.lua").pendentes(ctx, no.x, no.y, no.z)
+    end)
+    return ok and quantas or 0
+end
+
 --- Os ingredientes de um padrao de nove slots, somados por item.
 --
 -- Um padrao e a bancada como o jogador a montaria: nove posicoes, vazias ou com um item. Somar por
@@ -225,13 +236,36 @@ local function planejar(ctx, nos, item, quantidade, estado)
     end
 
     local porLote, ingredientes, maquina, cano
+
+    -- **Entre maquinas que fazem a mesma coisa, vence a de fila mais curta.**
+    --
+    -- Antes valia a primeira da lista e as outras ficavam paradas: montar uma segunda fornalha nao
+    -- fabricava mais rapido, so gastava ferro. Pior, com a fila da primeira cheia o pedido era
+    -- recusado com a segunda ociosa do lado.
+    --
+    -- A fila e lida so das ofertas que servem para este item -- poucas --, e nao de toda a rede.
+    local melhor, menorFila = nil, nil
     for _, oferta in ipairs(estado.padroes) do
         if oferta.saida.item == item then
+            local fila = 0
+            if oferta.maquina ~= nil and oferta.no ~= nil then
+                fila = espera_do_cano(ctx, oferta.no)
+            end
+            if menorFila == nil or fila < menorFila then
+                melhor, menorFila = oferta, fila
+            end
+        end
+    end
+
+    for _, oferta in ipairs(estado.padroes) do
+        if oferta == melhor then
             -- Quem filtra o declarado sem maquina e `padroes_na_rede`: a lista ja chega com o
             -- que a rede realmente sabe fazer, e conferir de novo aqui daria dois lugares para a
             -- mesma regra.
             porLote = oferta.saida.count
-            ingredientes = ingredientes_do_padrao(oferta.padrao)
+            -- A lista do mapa vence o desenho 3x3: o desenho para de contar em nove celulas, e
+            -- uma receita de dezesseis nao caberia nele.
+            ingredientes = oferta.ingredientes or ingredientes_do_padrao(oferta.padrao)
             maquina = oferta.maquina
             cano = oferta.no
             break
@@ -284,6 +318,26 @@ local function planejar(ctx, nos, item, quantidade, estado)
     if porLote < 1 then porLote = 1 end
 
     local lotes = math.ceil(falta / porLote)
+
+    -- **Um lote por vez quando ha maquina no caminho.**
+    --
+    -- Sem este teto, pedir dezesseis carvoes mandava dezesseis troncos de uma vez para o slot que
+    -- o mapa declarou como entrada. O `1x` do mapa era respeitado por lote, e o que ninguem
+    -- limitava era quantos lotes a maquina recebia junto -- entao o slot inteiro enchia e a
+    -- maquina ficava com material para dezesseis ciclos que ela nao ia executar, porque a rede
+    -- pede o produto no mesmo tique.
+    --
+    -- Enquanto a fabricacao acontece toda num tique, mais de um lote por chamada nao produz mais
+    -- nada: so tira da rede o que vai ficar parado dentro da maquina. Um lote e o que ela
+    -- consegue fechar.
+    -- E o teto vale so no pedido de cima, e nao nos passos que a receita deriva.
+    --
+    -- Cego, ele quebrava a propria cadeia que existe para funcionar: uma pederneira que precisa de
+    -- dois cascalhos ficava com um, e a receita legitima morria com "falta cascalho". Quem
+    -- despejava material na maquina era o jogador pedindo dezesseis; quantos cascalhos uma
+    -- pederneira come nao e escolha de ninguem, e sim a receita.
+    if maquina ~= nil and lotes > 1 and estado.profundidade == 0 then lotes = 1 end
+
     if #ingredientes == 0 then
         return doEstoque, "a receita de " .. item .. " nao lista ingrediente", estado
     end
@@ -322,7 +376,15 @@ local function planejar(ctx, nos, item, quantidade, estado)
         estado.reservado[item] = (estado.reservado[item] or 0) - (produzido - falta)
     end
 
-    return quantidade, nil, estado
+    -- **O que foi planejado, e nao o que foi pedido.**
+    --
+    -- Com o teto de um lote acima, prometer a quantidade inteira seria mentir: quem pediu
+    -- dezesseis recebe um, e o terminal precisa dizer um. Sem esta conta o pedido voltava dizendo
+    -- "atendido" com o bau vazio, que e o pior desfecho de todos.
+    local atendidoAqui = doEstoque + produzido
+    if atendidoAqui > quantidade then atendidoAqui = quantidade end
+
+    return atendidoAqui, nil, estado
 end
 
 --- Planeja a partir de um padrao montado a mao, e nao de uma receita escolhida pelo produto.
@@ -392,6 +454,25 @@ end
 -- ingredientes da rede e produz o resultado, o que da o mesmo efeito para quem joga e mantem a
 -- conta honesta: nada aparece sem que o material tenha sumido.
 local function executar(ctx, nos, plano, destino)
+    -- **So a fila cheia recusa um pedido.**
+    --
+    -- Antes o guarda recusava qualquer pedido enquanto o cano esperasse alguma coisa, e isso era
+    -- rigido demais: pedir cinco carvoes atendia um e recusava quatro. Uma maquina trabalhando em
+    -- fila e o comportamento esperado, e nao um erro -- e o material dos pedidos recusados ja
+    -- estava dentro dela, produzindo para ninguem recolher.
+    --
+    -- O guarda continua vindo antes de qualquer retirada: recusar depois de tirar da rede deixaria
+    -- material picado no caminho, que e o defeito que este mod existe para nao ter.
+    local espera = mod.import("lib/espera.lua")
+    for _, passo in ipairs(plano.fabricar) do
+        if passo.maquina ~= nil and passo.cano ~= nil
+                and espera.cheio(ctx, passo.cano.x, passo.cano.y, passo.cano.z) then
+            return 0, "a fila da maquina em " .. passo.maquina.x .. "," .. passo.maquina.y .. ","
+                   .. passo.maquina.z .. " esta cheia; espere as " .. espera.MAX_FILA
+                   .. " que ja estao nela"
+        end
+    end
+
     -- **Consome o que o plano reservou do estoque, e so isso.**
     --
     -- Os ingredientes intermediarios nao existem em lugar nenhum: as tabuas de uma bancada sao
@@ -447,22 +528,35 @@ local function executar(ctx, nos, plano, destino)
     local alvo = rede.destino(ctx, destino)
     if alvo == nil then return 0, "sem bau encostado em quem pediu" end
 
-    local produzido = raiz.lotes * raiz.por_lote
-
-    -- Um passo com maquina passa por ela, e nao aparece do nada.
+    --- Faz um passo passar pela maquina acoplada, se houver uma.
     --
-    -- Os ingredientes entram na maquina acoplada e o produto e retirado de la: o que nao sair, nao
-    -- foi produzido. E o que separa "a rede sabe fazer isto" de "o jogador escreveu que sabe".
+    -- Os ingredientes entram na maquina e o produto e retirado de la: o que nao sair, nao foi
+    -- produzido. E o que separa "a rede sabe fazer isto" de "o jogador escreveu que sabe".
     --
     -- **A maquina fica com o material se nao produzir**, e isso e de proposito: e o que uma
     -- fornalha faz quando voce poe minerio e fecha a tela. O material nao volta, mas tambem nao
     -- vira produto -- e o defeito que importa evitar, item aparecendo, nao acontece.
-    if raiz.maquina ~= nil then
-        local maquina = mod.import("lib/maquina.lua")
-        local cano = raiz.cano or destino
+    local function passar(passo)
+        local esperado = passo.lotes * passo.por_lote
+        if passo.maquina == nil then return esperado, nil end
 
-        for _, ingrediente in ipairs(raiz.ingredientes) do
-            local quantos = ingrediente.count * raiz.lotes
+        local maquina = mod.import("lib/maquina.lua")
+        local cano = passo.cano or destino
+
+        -- **Slot que nao existe nesta maquina e ignorado.**
+        --
+        -- O mapa mora no cano e sobrevive a troca da maquina: mapear um bau de 27 slots e depois
+        -- pousar uma fornalha de 3 no lugar deixa um slot 4 apontando para o vazio. A ponte recusa
+        -- -- com razao --, e a recusa vinha como erro de Lua no meio do pedido, que nao se parece
+        -- nem um pouco com "o mapa e de outra maquina".
+        local tamanho = ctx.server.container_size(passo.maquina.x, passo.maquina.y, passo.maquina.z)
+
+        local function existe(slot)
+            return slot ~= nil and slot >= 0 and slot < tamanho
+        end
+
+        for _, ingrediente in ipairs(passo.ingredientes) do
+            local quantos = ingrediente.count * passo.lotes
 
             -- **O slot vem do mapa que o jogador desenhou.**
             --
@@ -470,24 +564,121 @@ local function executar(ctx, nos, plano, destino)
             -- escolhe e a maquina, e ela nao sabe o que a rede quis dizer. Sem mapa, o
             -- comportamento antigo -- deixar a maquina decidir -- continua valendo, e para um bau
             -- ele esta certo.
-            local slot = maquina.entrada_para(ctx, cano, ingrediente.item)
-            local naoCoube = ctx.server.insert_into(raiz.maquina.x, raiz.maquina.y, raiz.maquina.z,
-                                                    ingrediente.item, quantos, slot)
+            -- **Enche um slot ate a conta dele, e so entao passa para o proximo.**
+            --
+            -- Antes ia tudo para um slot so: a busca devolvia um unico destino, escolhido com
+            -- `pairs`, que nao tem ordem. Uma maquina com duas entradas do mesmo item ficava com
+            -- uma cheia e a outra vazia, e qual das duas variava entre execucoes.
+            local entradas = {}
+            local foraDaMaquina = 0
+            for _, entrada in ipairs(maquina.entradas_para(ctx, cano, ingrediente.item)) do
+                if existe(entrada.slot) then
+                    entradas[#entradas + 1] = entrada
+                else
+                    foraDaMaquina = foraDaMaquina + 1
+                end
+            end
+
+            if foraDaMaquina > 0 then
+                ctx.log.warn("LOGISTICA o mapa do cano em " .. cano.x .. "," .. cano.y .. ","
+                             .. cano.z .. " cita " .. foraDaMaquina .. " slot(s) que a maquina em "
+                             .. passo.maquina.x .. "," .. passo.maquina.y .. "," .. passo.maquina.z
+                             .. " nao tem; ela so tem " .. tamanho)
+                if ctx.player ~= nil then
+                    ctx.player.send_message("LOGISTICA o mapa deste cano e de outra maquina: cita "
+                            .. "slot que a atual nao tem. Use /mod logistica esquecer "
+                            .. cano.x .. " " .. cano.y .. " " .. cano.z .. " e mapeie de novo")
+                end
+            end
+
+            local naoCoube = quantos
+
+            if #entradas == 0 then
+                -- Sem mapa, a maquina decide -- o comportamento antigo, que para um bau esta certo.
+                naoCoube = ctx.server.insert_into(passo.maquina.x, passo.maquina.y, passo.maquina.z,
+                                                  ingrediente.item, quantos)
+            else
+                -- A divisao e aritmetica, e nao uma insercao por item: colocar de um em um seriam
+                -- dezenas de escritas de inventario dentro dos 20 ms do callback. A conta decide
+                -- tudo antes, e cada slot recebe a sua parte numa chamada so.
+                local divisao, sobrando = maquina.distribuir(entradas, quantos, passo.lotes)
+                naoCoube = sobrando
+
+                for i, entrada in ipairs(entradas) do
+                    if divisao[i] > 0 then
+                        local sobra = ctx.server.insert_into(passo.maquina.x, passo.maquina.y,
+                                                             passo.maquina.z,
+                                                             ingrediente.item, divisao[i],
+                                                             entrada.slot)
+                        naoCoube = naoCoube + sobra
+                    end
+                end
+            end
+
+            -- **Material recusado interrompe a fabricacao.**
+            --
+            -- Enquanto isto era so um aviso, a maquina recusava o ingrediente e o passo seguinte
+            -- puxava o produto assim mesmo -- tirando do estoque que ja estava la dentro e
+            -- anunciando "FABRICOU". A rede perdia a pedra, a maquina perdia o cascalho e nada
+            -- tinha sido feito: item aparecendo do nada, que e o defeito que esta camada existe
+            -- para evitar. Parar aqui deixa o que ja entrou na maquina, como uma fornalha faz.
             if naoCoube > 0 then
-                ctx.log.warn("LOGISTICA a maquina em " .. raiz.maquina.x .. ","
-                             .. raiz.maquina.y .. "," .. raiz.maquina.z .. " nao aceitou "
+                if ctx.player ~= nil then
+                    ctx.player.send_message("LOGISTICA a maquina recusou " .. ingrediente.item
+                            .. " -- confira se o slot de entrada esta ocupado com outra coisa")
+                end
+                ctx.log.warn("LOGISTICA a maquina em " .. passo.maquina.x .. ","
+                             .. passo.maquina.y .. "," .. passo.maquina.z .. " nao aceitou "
                              .. naoCoube .. " x " .. ingrediente.item)
+                return 0, "a maquina nao aceitou " .. ingrediente.item
+                       .. " -- confira se o slot de entrada esta ocupado com outra coisa"
             end
         end
 
         -- E o produto sai do slot de saida, e nao de qualquer lugar: puxar sem slot tiraria de
         -- volta o proprio ingrediente que acabou de entrar.
-        local saida = maquina.saida_para(ctx, cano, raiz.item)
-        produzido = ctx.server.extract_from(raiz.maquina.x, raiz.maquina.y, raiz.maquina.z,
-                                            raiz.item, produzido, saida)
-        if produzido <= 0 then
-            return 0, "a maquina recebeu o material e ainda nao devolveu " .. raiz.item
+        local saida = maquina.saida_para(ctx, cano, passo.item)
+        if not existe(saida) then saida = nil end
+        local saiu = ctx.server.extract_from(passo.maquina.x, passo.maquina.y, passo.maquina.z,
+                                             passo.item, esperado, saida)
+
+        -- **Produto que nao veio ainda nao e produto que nao vem.**
+        --
+        -- Uma fornalha nem acendeu quando a rede pede o resultado. Antes isso era um erro e o
+        -- pedido morria com o material dentro da maquina; quem pediu clicava de novo e empilhava
+        -- mais material que nunca virava nada. Agora o cano anota o que espera e confere a cada
+        -- segundo, entregando quando ficar pronto.
+        --
+        -- So o passo final espera. Um passo do meio pendente pararia a cadeia com material ja
+        -- retirado da rede para os passos seguintes, e retomar isso exige guardar o plano inteiro
+        -- -- que e trabalho de outra ordem. Ate la, cadeia com maquina lenta no meio continua
+        -- dizendo que nao deu.
+        if saiu <= 0 then
+            if passo == plano.fabricar[#plano.fabricar] then
+                mod.import("lib/espera.lua").marcar(ctx, cano, passo.maquina,
+                                                    passo.item, esperado, alvo)
+                return 0, "a maquina esta processando " .. passo.item
+                       .. "; o cano entrega quando ficar pronto"
+            end
+            return 0, "a maquina recebeu o material e ainda nao devolveu " .. passo.item
         end
+        return saiu, nil
+    end
+
+    -- **Todo passo e executado, e nao so o ultimo.**
+    --
+    -- Enquanto so a raiz passava pela maquina, uma cadeia de duas maquinas anunciava "FABRICOU em
+    -- 2 passo(s)" tendo usado uma: a pedra sumia da rede, a pederneira saia do estoque da segunda
+    -- maquina, e a primeira nunca era tocada. Pedra virava pederneira de graca, com o log dizendo
+    -- que tinha dado certo.
+    --
+    -- A lista ja vem do fundo para a raiz -- quem produz antes de quem usa --, entao percorre-la
+    -- em ordem e o suficiente: o cascalho que sai da primeira maquina e o que entra na segunda.
+    local produzido
+    for _, passo in ipairs(plano.fabricar) do
+        local saiu, erro = passar(passo)
+        if erro ~= nil then return 0, erro end
+        produzido = saiu
     end
 
     local sobrou = ctx.server.insert_into(alvo.x, alvo.y, alvo.z, raiz.item, produzido)
@@ -502,6 +693,11 @@ local function executar(ctx, nos, plano, destino)
         consumido[#consumido + 1] = quantidade .. "x" .. item
     end
     table.sort(consumido)
+
+    if ctx.player ~= nil then
+        ctx.player.send_message("LOGISTICA fabricou " .. (produzido - sobrou) .. " x "
+                                .. raiz.item .. " em " .. #plano.fabricar .. " passo(s)")
+    end
 
     ctx.log.info("LOGISTICA FABRICOU " .. (produzido - sobrou) .. " x " .. raiz.item
                  .. " em " .. #plano.fabricar .. " passo(s)"

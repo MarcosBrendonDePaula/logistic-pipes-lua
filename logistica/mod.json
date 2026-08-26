@@ -891,13 +891,14 @@
       },
       "block_data": true,
       "behavior": {
-        "on_scheduled": "scripts/cano_tique.lua"
+        "on_scheduled": "scripts/cano_tique.lua",
+        "on_use": "scripts/fabricador_usado.lua"
       },
       "inventory": {
         "size": 10,
         "title": "Fabricador",
         "ghost": true,
-        "open_on_use": true,
+        "open_on_use": false,
         "allow_insert": false,
         "allow_extract": false,
         "drop_on_break": false,
@@ -953,9 +954,9 @@
           "buttons": [
             {
               "id": "importar",
-              "x": 26,
+              "x": 8,
               "y": 76,
-              "w": 72,
+              "w": 76,
               "h": 18,
               "text": "Importar",
               "tooltip": "Le a receita da bancada encostada neste cano"
@@ -1349,14 +1350,15 @@
       },
       "block_data": true,
       "behavior": {
-        "on_scheduled": "scripts/cano_tique.lua"
+        "on_scheduled": "scripts/cano_tique.lua",
+        "on_use": "scripts/fabricador_usado.lua"
       },
       "description": "Fabrica sob demanda, descendo mais fundo na arvore de receitas que o Mk1.",
       "inventory": {
         "size": 10,
         "title": "Fabricador",
         "ghost": true,
-        "open_on_use": true,
+        "open_on_use": false,
         "allow_insert": false,
         "allow_extract": false,
         "drop_on_break": false,
@@ -1412,9 +1414,9 @@
           "buttons": [
             {
               "id": "importar",
-              "x": 26,
+              "x": 8,
               "y": 76,
-              "w": 72,
+              "w": 76,
               "h": 18,
               "text": "Importar",
               "tooltip": "Le a receita da bancada encostada neste cano"
@@ -1546,14 +1548,15 @@
       },
       "block_data": true,
       "behavior": {
-        "on_scheduled": "scripts/cano_tique.lua"
+        "on_scheduled": "scripts/cano_tique.lua",
+        "on_use": "scripts/fabricador_usado.lua"
       },
       "description": "Fabrica sob demanda, montando a cadeia inteira de uma vez.",
       "inventory": {
         "size": 10,
         "title": "Fabricador",
         "ghost": true,
-        "open_on_use": true,
+        "open_on_use": false,
         "allow_insert": false,
         "allow_extract": false,
         "drop_on_break": false,
@@ -1609,9 +1612,9 @@
           "buttons": [
             {
               "id": "importar",
-              "x": 26,
+              "x": 8,
               "y": 76,
-              "w": 72,
+              "w": 76,
               "h": 18,
               "text": "Importar",
               "tooltip": "Le a receita da bancada encostada neste cano"

@@ -158,6 +158,72 @@ local function maquina_de(ctx, no)
     return achados[1]
 end
 
+--- A receita que o mapa de slots da maquina descreve, se descrever alguma.
+--
+-- **O mapa e uma receita.** Dizer "slot 0 recebe minerio, slot 2 devolve lingote" e dizer que este
+-- cano faz lingote a partir de minerio -- e era isso que faltava: o mapa existia, a rede nao o lia,
+-- e configurar a maquina inteira nao registrava nada.
+--
+-- As entradas com filtro viram os ingredientes e a saida com filtro vira o produto. Slot sem filtro
+-- e ignorado: "aceita qualquer item" nao diz o que a receita usa, e chutar um item ali seria
+-- inventar uma receita que ninguem escreveu.
+--
+-- A quantidade e uma de cada, porque o mapa nao tem onde dizer outra. E o suficiente para a maioria
+-- das maquinas, e um numero inventado seria pior que um numero simples.
+local function receita_do_mapa(ctx, no)
+    local m = mod.import("lib/maquina.lua")
+    local mapa = m.mapa_de(ctx, no.x, no.y, no.z)
+
+    local padrao = {}
+    for slot = 1, 9 do padrao[slot] = "" end
+
+    -- Os ingredientes saem em lista, e nao so no desenho 3x3.
+    --
+    -- O padrao expressa quantidade repetindo o item nas celulas, e para de contar em nove. Uma
+    -- receita de dezesseis pedras nao cabe la, e arredondar para nove seria mentir sobre o que a
+    -- maquina consome. A lista continua ao lado do padrao porque quem so quer desenhar a receita
+    -- ainda usa o padrao.
+    local entradas, saida = 0, nil
+    local ingredientes = {}
+
+    for _, config in pairs(mapa) do
+        if config.item ~= nil then
+            local quantos = config.count or 1
+
+            if config.papel == "entrada" then
+                -- **Somado por item, e nao um ingrediente por slot.**
+                --
+                -- Dois slots pedindo pedra sao duas pedras da mesma receita, e nao duas receitas
+                -- de uma pedra. Enquanto vinham separados, cada um era distribuido do zero e os
+                -- dois caiam no mesmo slot: a maquina ficava com duas pedras num lado e nenhuma no
+                -- outro, que e exatamente o arranjo que nao funciona.
+                local achou = false
+                for _, ja in ipairs(ingredientes) do
+                    if ja.item == config.item then
+                        ja.count = ja.count + quantos
+                        achou = true
+                        break
+                    end
+                end
+                if not achou then
+                    ingredientes[#ingredientes + 1] = { item = config.item, count = quantos }
+                end
+                for _ = 1, quantos do
+                    if entradas < 9 then
+                        entradas = entradas + 1
+                        padrao[entradas] = config.item
+                    end
+                end
+            elseif config.papel == "saida" and saida == nil then
+                saida = { item = config.item, count = quantos }
+            end
+        end
+    end
+
+    if #ingredientes == 0 or saida == nil then return nil end
+    return padrao, saida, ingredientes
+end
+
 --- Os padroes de bancada que a rede sabe montar, com o que cada um produz.
 --
 -- E o que o modulo fabricante acrescenta: sem ele a arvore de pedido so conhece as receitas do
@@ -219,7 +285,31 @@ local function padroes_na_rede(ctx, nos)
         -- O cano fabricador oferece o proprio padrao. E o que o original faz: a rede pergunta
         -- "quem sabe fazer isto?" e o cano responde com o que esta nos slots dele.
         if rede.FABRICADORES[no.bloco] ~= nil then
-            local padrao = padrao_do_bloco(ctx, no.x, no.y, no.z)
+            -- **O mapa da maquina vence o padrao de bancada.**
+            --
+            -- Quem mapeou entrada e saida ja disse o que este cano faz, e com mais precisao: o
+            -- padrao 3x3 diz o arranjo, o mapa diz o slot. Com maquina acoplada e mapeada, exigir o
+            -- padrao seria pedir a mesma informacao duas vezes -- e foi o que fez configurar a
+            -- maquina inteira nao registrar nada.
+            local doMapa, saidaDoMapa, ingredientesDoMapa = receita_do_mapa(ctx, no)
+            local acoplada = doMapa ~= nil and maquina_de(ctx, no) or nil
+
+            if doMapa ~= nil and acoplada ~= nil then
+                achados[#achados + 1] = {
+                    no = no,
+                    padrao = doMapa,
+                    saida = saidaDoMapa,
+                    -- A lista vence o padrao na hora de planejar: e ela que sabe contar acima de
+                    -- nove.
+                    ingredientes = ingredientesDoMapa,
+                    declarado = true,
+                    maquina = acoplada,
+                }
+            end
+
+            -- O padrao de bancada so e consultado quando o mapa nao respondeu: com maquina mapeada,
+            -- ler os dois daria duas receitas para o mesmo cano.
+            local padrao = doMapa == nil and padrao_do_bloco(ctx, no.x, no.y, no.z) or nil
             if padrao ~= nil then
                 -- **O resultado declarado vence o livro de receitas.** Quem escreveu "isto sai
                 -- daqui" sabe da maquina que o loader nao conhece; perguntar ao jogo por cima disso
@@ -442,6 +532,7 @@ return {
     configurar = configurar,
     quem_aceita = quem_aceita,
     padrao_do_bloco = padrao_do_bloco,
+    receita_do_mapa = receita_do_mapa,
     maquina_de = maquina_de,
     resultado_do_bloco = resultado_do_bloco,
     declarar_resultado = declarar_resultado,
