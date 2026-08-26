@@ -115,6 +115,18 @@
       "type": "image",
       "from": "assets/logisticspipes/pipes/crafting_mk3.png",
       "fallback": "minecraft:block/yellow_terracotta"
+    },
+    "fabricador_tela": {
+      "type": "gui",
+      "from": "assets/logisticspipes/gui/crafting.png"
+    },
+    "moldura": {
+      "type": "gui",
+      "from": "assets/logisticspipes/gui/gui_border.png"
+    },
+    "slot": {
+      "type": "gui",
+      "from": "assets/logisticspipes/gui/slot.png"
     }
   },
   "blocks": [
@@ -879,8 +891,77 @@
       },
       "block_data": true,
       "behavior": {
-        "on_use": "scripts/fabricador_usado.lua",
         "on_scheduled": "scripts/cano_tique.lua"
+      },
+      "inventory": {
+        "size": 10,
+        "title": "Fabricador",
+        "ghost": true,
+        "open_on_use": true,
+        "allow_insert": false,
+        "allow_extract": false,
+        "drop_on_break": false,
+        "layout": {
+          "width": 176,
+          "height": 187,
+          "slots": [
+            {
+              "x": 30,
+              "y": 17
+            },
+            {
+              "x": 48,
+              "y": 17
+            },
+            {
+              "x": 66,
+              "y": 17
+            },
+            {
+              "x": 30,
+              "y": 35
+            },
+            {
+              "x": 48,
+              "y": 35
+            },
+            {
+              "x": 66,
+              "y": 35
+            },
+            {
+              "x": 30,
+              "y": 53
+            },
+            {
+              "x": 48,
+              "y": 53
+            },
+            {
+              "x": 66,
+              "y": 53
+            },
+            {
+              "x": 124,
+              "y": 35
+            }
+          ],
+          "player": {
+            "x": 8,
+            "y": 105
+          },
+          "buttons": [
+            {
+              "id": "importar",
+              "x": 26,
+              "y": 76,
+              "w": 72,
+              "h": 18,
+              "text": "Importar",
+              "tooltip": "Le a receita da bancada encostada neste cano"
+            }
+          ]
+        }
       }
     },
     {
@@ -1268,10 +1349,79 @@
       },
       "block_data": true,
       "behavior": {
-        "on_use": "scripts/fabricador_usado.lua",
         "on_scheduled": "scripts/cano_tique.lua"
       },
-      "description": "Fabrica sob demanda, descendo mais fundo na arvore de receitas que o Mk1."
+      "description": "Fabrica sob demanda, descendo mais fundo na arvore de receitas que o Mk1.",
+      "inventory": {
+        "size": 10,
+        "title": "Fabricador",
+        "ghost": true,
+        "open_on_use": true,
+        "allow_insert": false,
+        "allow_extract": false,
+        "drop_on_break": false,
+        "layout": {
+          "width": 176,
+          "height": 187,
+          "slots": [
+            {
+              "x": 30,
+              "y": 17
+            },
+            {
+              "x": 48,
+              "y": 17
+            },
+            {
+              "x": 66,
+              "y": 17
+            },
+            {
+              "x": 30,
+              "y": 35
+            },
+            {
+              "x": 48,
+              "y": 35
+            },
+            {
+              "x": 66,
+              "y": 35
+            },
+            {
+              "x": 30,
+              "y": 53
+            },
+            {
+              "x": 48,
+              "y": 53
+            },
+            {
+              "x": 66,
+              "y": 53
+            },
+            {
+              "x": 124,
+              "y": 35
+            }
+          ],
+          "player": {
+            "x": 8,
+            "y": 105
+          },
+          "buttons": [
+            {
+              "id": "importar",
+              "x": 26,
+              "y": 76,
+              "w": 72,
+              "h": 18,
+              "text": "Importar",
+              "tooltip": "Le a receita da bancada encostada neste cano"
+            }
+          ]
+        }
+      }
     },
     {
       "id": "fabricador_mk3",
@@ -1396,10 +1546,79 @@
       },
       "block_data": true,
       "behavior": {
-        "on_use": "scripts/fabricador_usado.lua",
         "on_scheduled": "scripts/cano_tique.lua"
       },
-      "description": "Fabrica sob demanda, montando a cadeia inteira de uma vez."
+      "description": "Fabrica sob demanda, montando a cadeia inteira de uma vez.",
+      "inventory": {
+        "size": 10,
+        "title": "Fabricador",
+        "ghost": true,
+        "open_on_use": true,
+        "allow_insert": false,
+        "allow_extract": false,
+        "drop_on_break": false,
+        "layout": {
+          "width": 176,
+          "height": 187,
+          "slots": [
+            {
+              "x": 30,
+              "y": 17
+            },
+            {
+              "x": 48,
+              "y": 17
+            },
+            {
+              "x": 66,
+              "y": 17
+            },
+            {
+              "x": 30,
+              "y": 35
+            },
+            {
+              "x": 48,
+              "y": 35
+            },
+            {
+              "x": 66,
+              "y": 35
+            },
+            {
+              "x": 30,
+              "y": 53
+            },
+            {
+              "x": 48,
+              "y": 53
+            },
+            {
+              "x": 66,
+              "y": 53
+            },
+            {
+              "x": 124,
+              "y": 35
+            }
+          ],
+          "player": {
+            "x": 8,
+            "y": 105
+          },
+          "buttons": [
+            {
+              "id": "importar",
+              "x": 26,
+              "y": 76,
+              "w": 72,
+              "h": 18,
+              "text": "Importar",
+              "tooltip": "Le a receita da bancada encostada neste cano"
+            }
+          ]
+        }
+      }
     }
   ],
   "events": {

@@ -184,6 +184,25 @@ lugares onde a versão de hoje escolheu o caminho curto, e vale saber qual foi.
 
 ### Fabricador
 
+**O sistema hoje.** O cano abre uma janela declarada com a forma da bancada: grade **3×3** para o
+padrão, **slot de saída** ao lado, botão **Importar** embaixo, e o inventário do jogador. Os slots
+são fantasma — nada é consumido ao desenhar. Três formas de preencher:
+
+| Como | Quando |
+|---|---|
+| `/mod logistica importar` | há uma bancada montada encostada no cano — lê o arranjo e o produto |
+| arrastar item nos slots | montar à mão; nada é consumido, os slots são fantasma |
+| `/mod logistica resultado <item> [qtd]` | declarar o que sai, quando o jogo não sabe dizer |
+
+**O resultado declarado vence o livro de receitas, e é isso que torna o sistema genérico.** Sem ele,
+a rede só sabe fabricar o que a bancada do jogo faz. Com ele, o mesmo cano serve a qualquer máquina
+acoplada — forno, moedor, prensa de outro mod: o padrão diz o que entra, o resultado diz o que sai,
+e nem o mod nem o loader precisam entender a máquina do meio.
+
+O terminal lista o que a rede **sabe fazer** junto do que ela **tem**, com o botão escrito "Fazer"
+em vez de "Pedir". Sem isso um cano fabricador só servia a quem já sabia de cor que ele estava lá, e
+o pedido tinha que ser digitado no escuro.
+
 - **Não usa bancada de verdade.** Ele consome os ingredientes e produz o resultado. O efeito para
   quem joga é o mesmo e a conta fecha — nada aparece sem que o material tenha sumido —, mas não há
   bancada envolvida. ~~O loader não tem API para isso.~~ **Tem**: `crafting_result(padrão)` recebe
@@ -193,9 +212,11 @@ lugares onde a versão de hoje escolheu o caminho curto, e vale saber qual foi.
   `receitas[1]`, e por isso pedir pelo nome do produto ainda pode escolher a receita errada. Mas o
   fabricador tem bancada 3×3, e `planejar_padrao` usa o arranjo que o jogador montou — que é como o
   original resolve: quem escolhe a receita é quem tem o material.
-- **A posição da receita vale o primeiro item.** Uma posição que aceita carvão *ou* carvão vegetal
-  usa carvão, mesmo que só haja o vegetal em estoque. Escolher pelo que existe exigiria consultar o
-  estoque dentro do planejamento, o que multiplica o custo de montar a árvore.
+- ~~**A posição da receita vale o primeiro item.**~~ **Corrigido**, e era mais grave do que a nota
+  antiga sugeria: pedir um baú numa base cheia de carvalho descia para tora de selva e desistia com
+  "ninguém sabe fazer". A tag `#planks` aceita qualquer madeira e a lista vem numa ordem que o mod
+  não escolhe. Agora a escolha é **o que a rede tem**, e o estoque é lido uma vez por árvore — o que
+  a nota temia (multiplicar o custo) não aconteceu porque ele já era lido a cada nó.
 - **Sem reserva entre pedidos.** Dois pedidos seguidos no mesmo tique podem planejar contando o
   mesmo material: a reserva vale dentro de uma árvore, não entre duas.
 

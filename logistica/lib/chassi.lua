@@ -123,10 +123,82 @@ end
 -- E o que o modulo fabricante acrescenta: sem ele a arvore de pedido so conhece as receitas do
 -- jogo, e escolhe sempre a primeira. Com ele, quem monta a base decide **qual** receita a rede usa
 -- para cada item -- que e a razao de o modulo existir no original.
+--- O que um cano fabricador declara produzir, lido da fileira de baixo.
+--
+-- **E o que torna o sistema generico.** Sem resultado declarado, a unica forma de saber o que um
+-- arranjo faz e perguntar ao livro de receitas do jogo -- e ai a rede so sabe fabricar o que a
+-- bancada faz. Com ele, o mesmo cano serve a qualquer maquina acoplada: forno, moedor, prensa de
+-- outro mod. O padrao vira "o que entra", o resultado vira "o que sai", e o loader nao precisa
+-- entender a maquina do meio.
+--
+-- O primeiro slot da fileira e o produto; os seguintes sao subproduto -- o balde que volta junto
+-- da sopa. Devolve nil quando ninguem declarou nada, e ai quem responde e o jogo.
+local function resultado_do_bloco(ctx, x, y, z)
+    -- No slot 9, que a janela declarada desenha ao lado da grade -- onde a bancada do jogo poe o
+    -- resultado. Ele e fantasma como os outros: e uma declaracao, e nao um item guardado.
+    for _, entrada in ipairs(ctx.server.container_at(x, y, z)) do
+        if entrada.slot == 9 then
+            return { item = entrada.item, count = entrada.count }
+        end
+    end
+    return nil
+end
+
+--- Declara o que aquele cano produz.
+local function declarar_resultado(ctx, x, y, z, item, quantidade)
+    ctx.server.set_slot(x, y, z, 9, item, math.max(1, quantidade or 1))
+end
+
+--- O padrao guardado nos nove slots de um bloco.
+--
+-- Le o inventario do proprio bloco, e nao uma tabela do mod: assim o jogador monta a receita
+-- arrastando item com o mouse, na janela do jogo, com o inventario dele embaixo. Uma tela desenhada
+-- a mao nao tem slot, e sem slot nao ha como montar um padrao de varios itens sem inventar gesto.
+--
+-- Os itens ficam ali como desenho: nada e consumido, e `allow_extract` falso impede a propria rede
+-- de esvaziar a receita sem ninguem perceber.
+local function padrao_do_bloco(ctx, x, y, z)
+    local padrao = {}
+    for slot = 1, 9 do padrao[slot] = "" end
+
+    local vazio = true
+    for _, entrada in ipairs(ctx.server.container_at(x, y, z)) do
+        if entrada.slot >= 0 and entrada.slot <= 8 then
+            padrao[entrada.slot + 1] = entrada.item
+            vazio = false
+        end
+    end
+    if vazio then return nil end
+    return padrao
+end
+
 local function padroes_na_rede(ctx, nos)
     local achados = {}
 
     for _, no in ipairs(nos) do
+        -- O cano fabricador oferece o proprio padrao. E o que o original faz: a rede pergunta
+        -- "quem sabe fazer isto?" e o cano responde com o que esta nos slots dele.
+        if rede.FABRICADORES[no.bloco] ~= nil then
+            local padrao = padrao_do_bloco(ctx, no.x, no.y, no.z)
+            if padrao ~= nil then
+                -- **O resultado declarado vence o livro de receitas.** Quem escreveu "isto sai
+                -- daqui" sabe da maquina que o loader nao conhece; perguntar ao jogo por cima disso
+                -- responderia "esse arranjo nao faz nada" e o cano ficaria mudo na rede.
+                local saida = resultado_do_bloco(ctx, no.x, no.y, no.z)
+
+                if saida == nil then
+                    local ok, doJogo = pcall(function()
+                        return ctx.server.crafting_result(padrao)
+                    end)
+                    if ok then saida = doJogo end
+                end
+
+                if saida ~= nil then
+                    achados[#achados + 1] = { no = no, padrao = padrao, saida = saida }
+                end
+            end
+        end
+
         if no.bloco == "logistica:chassi" then
             for _, modulo in ipairs(modulos_em(ctx, no.x, no.y, no.z)) do
                 if modulo.tipo == "fabricante" then
@@ -307,6 +379,9 @@ return {
     configuracao = configuracao,
     configurar = configurar,
     quem_aceita = quem_aceita,
+    padrao_do_bloco = padrao_do_bloco,
+    resultado_do_bloco = resultado_do_bloco,
+    declarar_resultado = declarar_resultado,
     e_descarte = e_descarte,
     padroes_na_rede = padroes_na_rede,
     passo = passo,

@@ -15,6 +15,17 @@ local LARGURA = 256
 local ALTURA = 200
 local POR_PAGINA = 7
 
+-- A moldura do original, desenhada em nove pedacos.
+--
+-- O arquivo tem 256x199 com o miolo transparente e a borda em volta: os cantos saem inteiros e as
+-- bordas esticam, entao a mesma arte serve a qualquer tamanho de tela. As espessuras foram medidas
+-- na folha -- o pe e mais alto que o topo, e chutar um numero simetrico dobraria a linha de baixo.
+local MOLDURA = "logistica:textures/gui/moldura.png"
+local MOLDURA_L, MOLDURA_A = 256, 199
+local BORDA_TOPO, BORDA_LADO, BORDA_PE = 23, 23, 29
+
+local SLOT = "logistica:textures/gui/slot.png"
+
 -- Cores como TEXTO, e nao como numero.
 --
 -- O loader espera "#RRGGBB" ou "#RRGGBBAA"; um numero e recusado, e a recusa derruba a montagem da
@@ -56,28 +67,41 @@ local function desenhar(ctx, estado)
     if estado.pagina < 0 then estado.pagina = 0 end
 
     elementos[#elementos + 1] = { type = "panel", x = 0, y = 0,
-                                  w = LARGURA, h = ALTURA, style = "vanilla" }
-    elementos[#elementos + 1] = { type = "label", x = 10, y = 8, color = COR_TEXTO,
+                                  w = LARGURA, h = ALTURA, style = "sheet",
+                                  texture = MOLDURA,
+                                  u = 0, v = 0, sw = MOLDURA_L, sh = MOLDURA_A,
+                                  sheet_w = 256, sheet_h = 248,
+                                  border_top = BORDA_TOPO, border_bottom = BORDA_PE,
+                                  border_left = BORDA_LADO, border_right = BORDA_LADO }
+
+    elementos[#elementos + 1] = { type = "label", x = 12, y = 8, color = COR_TEXTO,
                                   text = "Rede: " .. (estado.nos or 0) .. " cano(s), "
                                          .. #lista .. " item(ns)" }
-    elementos[#elementos + 1] = { type = "input", id = "filtro", x = 10, y = 22,
-                                  w = LARGURA - 20, h = 16, value = estado.filtro }
+    elementos[#elementos + 1] = { type = "input", id = "filtro", x = 12, y = 24,
+                                  w = LARGURA - 24, h = 16, value = estado.filtro }
 
-    local y = 44
+    local y = 48
     local de = estado.pagina * POR_PAGINA + 1
     local ate = math.min(de + POR_PAGINA - 1, #lista)
 
     for indice = de, ate do
         local entrada = lista[indice]
-        elementos[#elementos + 1] = { type = "item", x = 10, y = y - 2,
+
+        -- O encaixe do original atras de cada item. Sao 18x18 e o item ocupa 16: o desenho fica
+        -- um pixel para dentro, que e onde o slot o espera.
+        elementos[#elementos + 1] = { type = "image", x = 11, y = y - 3,
+                                      w = 18, h = 18, u = 0, v = 0,
+                                      sheet_w = 18, sheet_h = 18, texture = SLOT }
+        elementos[#elementos + 1] = { type = "item", x = 12, y = y - 2,
                                       item = entrada.item, count = entrada.count }
         elementos[#elementos + 1] = { type = "label", x = 30, y = y, color = COR_TEXTO,
                                       text = entrada.item }
         elementos[#elementos + 1] = { type = "label", x = 30, y = y + 9, color = COR_FRACA,
-                                      text = "na rede: " .. entrada.count }
+                                      text = entrada.fabricavel and "a rede sabe fazer"
+                                             or ("na rede: " .. entrada.count) }
         elementos[#elementos + 1] = { type = "button", id = "pedir:" .. entrada.item,
                                       x = LARGURA - 62, y = y - 1, w = 52, h = 18,
-                                      text = "Pedir " .. POR_PEDIDO }
+                                      text = entrada.fabricavel and "Fazer" or ("Pedir " .. POR_PEDIDO) }
         y = y + 20
     end
 
@@ -122,6 +146,27 @@ local function ler_rede(ctx, estado)
     estado.nos = #nos
     estado.rede = nos
     estado.estoque = rede.estoque(ctx, nos)
+
+    -- O que a rede sabe FAZER entra na mesma lista do que ela TEM.
+    --
+    -- Sem isso o terminal so oferece o que ja existe, e um cano fabricador so serve a quem ja sabe
+    -- de cor que ele esta la -- o pedido tinha que ser digitado no escuro. Um item que a rede
+    -- fabrica e tao pedivel quanto um que ela guarda; a diferenca e o tempo, e nao a
+    -- possibilidade.
+    local jaTem = {}
+    for _, entrada in ipairs(estado.estoque) do jaTem[entrada.item] = true end
+
+    for _, oferta in ipairs(mod.import("lib/chassi.lua").padroes_na_rede(ctx, nos)) do
+        if not jaTem[oferta.saida.item] then
+            jaTem[oferta.saida.item] = true
+            -- Contagem zero e a marca de "nao tenho, mas sei fazer". O desenho le isso para nao
+            -- mostrar um numero que mentiria sobre o estoque.
+            estado.estoque[#estado.estoque + 1] =
+                    { item = oferta.saida.item, count = 0, fabricavel = true }
+        end
+    end
+
+    table.sort(estado.estoque, function(a, b) return a.item < b.item end)
     estado.aviso = cortou
             and ("rede grande demais; vendo so " .. rede.MAX_NOS .. " canos")
             or ""
@@ -154,6 +199,27 @@ local function evento(ctx)
         local item = string.sub(elemento, 7)
         local entregue, motivo = viagem.entregar(ctx, estado.rede or {}, estado.terminal,
                                           item, POR_PEDIDO)
+
+        -- O que a rede nao tem, ela tenta fazer.
+        --
+        -- A entrega so olha provedor, e um item que ninguem guarda devolve zero -- que era a
+        -- resposta para tudo que existe so como receita. Cair na arvore de pedido aqui e o que
+        -- torna o botao "Fazer" verdade: para quem clica, pedir e pedir, e de onde vem e problema
+        -- da rede.
+        if entregue == 0 then
+            local fabricacao = mod.import("lib/fabricacao.lua")
+            local atendido, porque, plano = fabricacao.planejar(
+                    ctx, estado.rede or {}, item, POR_PEDIDO)
+
+            if atendido > 0 and plano ~= nil then
+                local pronto, erro = fabricacao.executar(
+                        ctx, estado.rede or {}, plano, estado.terminal)
+                entregue = pronto
+                motivo = erro or ("fabricado: " .. #plano.fabricar .. " passo(s)")
+            elseif porque ~= nil then
+                motivo = porque
+            end
+        end
 
         -- O resultado tambem no log, e nao so no rodape da tela.
         --

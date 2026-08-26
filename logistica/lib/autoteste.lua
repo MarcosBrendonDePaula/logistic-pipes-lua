@@ -568,6 +568,96 @@ TESTES.fabricador_mk3_desce_mais_fundo = function(ctx)
     desmontar(ctx, 34, 3)
 end
 
+TESTES.cano_fabricador_oferece_o_padrao = function(ctx)
+    -- O padrao mora nos nove slots do proprio cano, montados na janela do jogo. E o que substituiu
+    -- a tela desenhada a mao: sem slot de verdade nao ha como montar um padrao de varios itens.
+    local r = montar(ctx, 36, 3, "logistica:fabricador")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:oak_log", 8)
+
+    -- Duas tabuas empilhadas, nos slots 0 e 3 -- a coluna da esquerda da bancada.
+    -- `set_slot` porque o padrao e fantasma: `insert_into` passa pelo portao de maquina, que um
+    -- inventario fantasma fecha para ninguem apagar o desenho.
+    ctx.server.set_slot(r.fim.x, r.fim.y, r.fim.z, 0, "minecraft:oak_planks", 1)
+    ctx.server.set_slot(r.fim.x, r.fim.y, r.fim.z, 3, "minecraft:oak_planks", 1)
+
+    local padrao = chassi.padrao_do_bloco(ctx, r.fim.x, r.fim.y, r.fim.z)
+    exigir(padrao ~= nil, "o cano deveria ter um padrao")
+    exigir(padrao[1] == "minecraft:oak_planks" and padrao[4] == "minecraft:oak_planks",
+           "o padrao deveria ter tabua nos slots 1 e 4")
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    local padroes = chassi.padroes_na_rede(ctx, nos)
+    exigir(#padroes == 1, "a rede deveria conhecer 1 padrao, conhece " .. #padroes)
+    exigir(padroes[1].saida.item == "minecraft:stick",
+           "o padrao deveria fazer vara, faz " .. tostring(padroes[1].saida.item))
+
+    -- E a arvore usa o padrao do cano: so ha tora na rede, e mesmo assim a vara sai.
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:stick", 4)
+    exigir(atendido == 4, "deveria atender 4 varas, atendeu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+    exigir(plano.retirar["minecraft:oak_log"] == 1,
+           "deveria sair 1 tora, sai " .. tostring(plano.retirar["minecraft:oak_log"]))
+
+    desmontar(ctx, 36, 3)
+end
+
+TESTES.resultado_declarado_vence_o_jogo = function(ctx)
+    -- O que abre o sistema para qualquer maquina: o jogo nao precisa conhecer o arranjo.
+    local r = montar(ctx, 38, 3, "logistica:fabricador")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:cobblestone", 16)
+
+    -- Uma pedra sozinha no meio nao e receita de bancada nenhuma...
+    ctx.server.set_slot(r.fim.x, r.fim.y, r.fim.z, 4, "minecraft:cobblestone", 1)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    exigir(#chassi.padroes_na_rede(ctx, nos) == 0,
+           "sem resultado declarado, o jogo nao conhece esse arranjo")
+
+    -- ...mas um moedor de outro mod faria cascalho. Quem declara e quem sabe da maquina.
+    chassi.declarar_resultado(ctx, r.fim.x, r.fim.y, r.fim.z, "minecraft:gravel", 2)
+
+    local padroes = chassi.padroes_na_rede(ctx, nos)
+    exigir(#padroes == 1, "com resultado declarado a rede deveria saber fazer, achou " .. #padroes)
+    exigir(padroes[1].saida.item == "minecraft:gravel" and padroes[1].saida.count == 2,
+           "deveria produzir 2 cascalho, produz " .. tostring(padroes[1].saida.count)
+           .. " x " .. tostring(padroes[1].saida.item))
+
+    -- E a arvore de pedido usa isso como qualquer receita.
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:gravel", 2)
+    exigir(atendido == 2, "deveria atender 2 cascalho, atendeu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+    exigir(plano.retirar["minecraft:cobblestone"] == 1,
+           "deveria sair 1 pedra, sai " .. tostring(plano.retirar["minecraft:cobblestone"]))
+
+    desmontar(ctx, 38, 3)
+end
+
+TESTES.escolhe_o_ingrediente_que_a_rede_tem = function(ctx)
+    -- O caso que apareceu jogando: pedir um bau numa base cheia de carvalho.
+    --
+    -- A receita do bau aceita tabua de **qualquer** madeira, e a lista da tag vem numa ordem que o
+    -- mod nao escolhe. Pegando o primeiro, o plano descia para tora de selva e desistia com
+    -- "ninguem sabe fazer" -- com a base tendo o material o tempo todo.
+    local r = montar(ctx, 40, 3, "logistica:fabricador")
+    ctx.server.insert_into(r.origem.x, r.origem.y, r.origem.z, "minecraft:oak_log", 16)
+
+    local nos = rede.varrer(ctx, r.fim.x, r.fim.y, r.fim.z)
+    local atendido, motivo, plano = fabricacao.planejar(ctx, nos, "minecraft:chest", 1)
+
+    exigir(atendido == 1, "deveria dar para fazer um bau com carvalho, deu " .. atendido
+                          .. " (" .. tostring(motivo) .. ")")
+
+    -- E o que sai do bau e carvalho, e nao outra madeira qualquer.
+    exigir(plano.retirar["minecraft:oak_log"] ~= nil,
+           "deveria sair tora de carvalho, saiu " .. tostring(next(plano.retirar)))
+
+    local pronto = fabricacao.executar(ctx, nos, plano, r.fim)
+    exigir(pronto == 1, "deveria ficar pronto 1 bau, ficaram " .. pronto)
+    exigir(quanto(ctx, r.destino, "minecraft:chest") == 1, "o bau deveria estar no destino")
+
+    desmontar(ctx, 40, 3)
+end
+
 --- Roda a bateria e escreve o resultado no log.
 --
 -- **Um caso por tique, e nao todos de uma vez.** Cada callback tem 20 ms, e a bateria inteira num

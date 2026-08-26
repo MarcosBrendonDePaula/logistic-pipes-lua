@@ -37,9 +37,20 @@ local MAX_NOS = 64
 --
 -- Vem do proprio jogo, e nao de uma receita declarada no mod: um fabricador que so soubesse fazer o
 -- que o mod ensinou seria inutil num modpack, onde quase tudo vem de outro lugar.
+-- Quantas receitas pedir por item.
+--
+-- **Uma**, porque uma e a que se usa. A resposta nao e barata: cada receita traz ate nove posicoes,
+-- e cada posicao ate trinta e duas alternativas -- pedir oito era ate 2.304 cadeias de texto por
+-- item, das quais 2.303 iam para o lixo. Numa arvore de 256 nos isso e memoria de sobra dentro de
+-- um callback com 20 ms de orcamento.
+--
+-- Subir este numero e o que um "tentar a proxima receita" precisaria, e por isso ele e uma
+-- constante com nome em vez de um 1 solto no meio da chamada.
+local RECEITAS_POR_ITEM = 1
+
 local function receitas_de(ctx, item)
     local ok, lista = pcall(function()
-        return ctx.server.recipes_for(item, 8)
+        return ctx.server.recipes_for(item, RECEITAS_POR_ITEM)
     end)
 
     -- O erro vai para o log em vez de virar "ninguem sabe fazer". Engolir a causa aqui mandava a
@@ -57,15 +68,33 @@ end
 -- Uma receita lista posicoes, e a mesma pilha pode aparecer em varias -- quatro tabuas para uma
 -- bancada sao quatro posicoes de uma tabua. Somar aqui e o que torna o resto da conta simples.
 --
-local function ingredientes_de(receita)
+local function ingredientes_de(receita, tem)
     local total = {}
     local ordem = {}
 
-    -- Cada posicao e a LISTA de itens que servem ali: a receita de tocha aceita carvao ou carvao
-    -- vegetal, e chega como os dois. Vale o primeiro -- escolher o mais barato exigiria saber o
-    -- preco de tudo, e a rede nao sabe.
+    -- Cada posicao e a LISTA de itens que servem ali: a receita do bau aceita tabua de qualquer
+    -- madeira, e chega como todas elas.
+    --
+    -- **Vale o que a rede tem, e nao o primeiro da lista.** Pegar o primeiro parece inofensivo e
+    -- nao e: a lista da tag vem numa ordem que o mod nao escolhe, e pedir um bau numa base cheia de
+    -- carvalho descia para tora de selva e desistia com "ninguem sabe fazer". A base tinha o
+    -- material o tempo todo.
+    --
+    -- Sem estoque conhecido, ou quando nenhuma opcao existe, vale o primeiro: a mensagem de erro
+    -- precisa nomear alguma coisa concreta.
     for _, posicao in ipairs(receita.ingredients or {}) do
-        local escolha = type(posicao) == "table" and posicao[1] or nil
+        local escolha = nil
+        if type(posicao) == "table" then
+            if tem ~= nil then
+                for _, candidato in ipairs(posicao) do
+                    if (tem[candidato] or 0) > 0 then
+                        escolha = candidato
+                        break
+                    end
+                end
+            end
+            escolha = escolha or posicao[1]
+        end
 
         if escolha ~= nil then
             if total[escolha] == nil then
@@ -109,13 +138,22 @@ local function ingredientes_do_padrao(padrao)
     return lista
 end
 
---- Quanto a rede tem daquele item, sem contar o que outro ramo ja reservou.
-local function disponivel(ctx, nos, item, reservado)
-    local total = 0
+--- O estoque da rede como mapa, lido uma vez por arvore.
+--
+-- `rede.estoque` varre todos os provedores; chama-la por item fazia a arvore pagar a varredura
+-- inteira a cada no. Numa receita de tres niveis isso e uma varredura por ingrediente de cada
+-- passo, dentro de um callback com 20 ms.
+local function estoque_como_mapa(ctx, nos)
+    local mapa = {}
     for _, entrada in ipairs(rede.estoque(ctx, nos)) do
-        if entrada.item == item then total = total + entrada.count end
+        mapa[entrada.item] = (mapa[entrada.item] or 0) + entrada.count
     end
-    return total - (reservado[item] or 0)
+    return mapa
+end
+
+--- Quanto a rede tem daquele item, sem contar o que outro ramo ja reservou.
+local function disponivel(estado, item)
+    return (estado.tem[item] or 0) - (estado.reservado[item] or 0)
 end
 
 --- Resolve um pedido, montando o plano sem mexer em nada.
@@ -132,6 +170,7 @@ end
 local function planejar(ctx, nos, item, quantidade, estado)
     estado = estado or {
         reservado = {},     -- o que ja foi prometido a outro ramo
+        tem = estoque_como_mapa(ctx, nos),   -- o estoque, lido uma vez para a arvore inteira
         fabricar = {},      -- o plano, do fundo para a raiz
         retirar = {},       -- o que sai do estoque
         nos = 0,
@@ -162,7 +201,7 @@ local function planejar(ctx, nos, item, quantidade, estado)
     end
 
     -- 1. O que ja existe. Reservar aqui e o que impede dois ramos de contarem a mesma pilha.
-    local tem = disponivel(ctx, nos, item, estado.reservado)
+    local tem = disponivel(estado, item)
     local doEstoque = math.min(tem, quantidade)
     if doEstoque > 0 then
         estado.reservado[item] = (estado.reservado[item] or 0) + doEstoque
@@ -197,14 +236,44 @@ local function planejar(ctx, nos, item, quantidade, estado)
     if ingredientes == nil then
         -- Sem padrao e sem receita, o pedido para aqui -- e o caso comum: minerio nao se fabrica,
         -- se cava.
-        local receitas = receitas_de(ctx, item)
-        if #receitas == 0 then
+        -- A receita ja resolvida, guardada por arvore.
+        --
+        -- Duas economias na mesma linha. **Guardar** porque `recipes_for` varre o livro de receitas
+        -- inteiro -- a propria API avisa que nao ha indice por item --, e a arvore perguntava de
+        -- novo a cada no; num modpack com milhares de receitas isso sozinho estoura os 20 ms.
+        --
+        -- E guardar o **resultado**, e nao a receita crua: a resposta do jogo traz ate nove posicoes
+        -- com ate trinta e duas alternativas cada, e o que a arvore precisa depois sao os poucos
+        -- ingredientes escolhidos. Segurar a resposta inteira por item era carregar duas mil
+        -- cadeias de texto para usar nove.
+        --
+        -- A escolha depende do estoque, que e lido uma vez e nao muda durante a arvore -- entao
+        -- resolver uma vez por item esta certo.
+        estado.receitas = estado.receitas or {}
+        local resolvida = estado.receitas[item]
+
+        if resolvida == nil then
+            local receitas = receitas_de(ctx, item)
+            if #receitas == 0 then
+                -- `false` e nao `nil`: nil faria a proxima visita perguntar de novo, e "ninguem
+                -- sabe fazer" e uma resposta tao cara de obter quanto qualquer outra.
+                resolvida = false
+            else
+                local receita = receitas[1]
+                resolvida = {
+                    por_lote = receita.output ~= nil and tonumber(receita.output.count) or 1,
+                    ingredientes = ingredientes_de(receita, estado.tem),
+                }
+            end
+            estado.receitas[item] = resolvida
+        end
+
+        if resolvida == false then
             return doEstoque, "a rede nao tem " .. item .. " e ninguem sabe fazer", estado
         end
 
-        local receita = receitas[1]
-        porLote = receita.output ~= nil and tonumber(receita.output.count) or 1
-        ingredientes = ingredientes_de(receita)
+        porLote = resolvida.por_lote
+        ingredientes = resolvida.ingredientes
     end
 
     if porLote < 1 then porLote = 1 end
@@ -272,7 +341,14 @@ local function planejar_padrao(ctx, nos, padrao, lotes)
     -- Os ingredientes viram pedidos comuns, pelas mesmas tres regras: o que existe, o que ja foi
     -- planejado, o que da para fabricar. E o que faz um padrao de bancada puxar a arvore inteira --
     -- pedir uma porta com o padrao certo derruba a arvore ate a tora.
-    local estado = { reservado = {}, fabricar = {}, retirar = {}, nos = 0, profundidade = 1 }
+    local estado = {
+        reservado = {},
+        tem = estoque_como_mapa(ctx, nos),
+        fabricar = {},
+        retirar = {},
+        nos = 0,
+        profundidade = 1,
+    }
 
     for _, ingrediente in ipairs(ingredientes) do
         local precisa = ingrediente.count * lotes
@@ -363,6 +439,22 @@ local function executar(ctx, nos, plano, destino)
 
     local produzido = raiz.lotes * raiz.por_lote
     local sobrou = ctx.server.insert_into(alvo.x, alvo.y, alvo.z, raiz.item, produzido)
+
+    -- **Um registro por fabricacao, dizendo o que entrou e o que saiu.**
+    --
+    -- Ate aqui fabricar era mudo: o material sumia do bau, o produto aparecia no outro, e nao havia
+    -- como saber se a rede tinha feito alguma coisa ou se nada tinha acontecido. Num sistema que
+    -- decide sozinho, "esta funcionando?" precisa de resposta.
+    local consumido = {}
+    for item, quantidade in pairs(plano.retirar) do
+        consumido[#consumido + 1] = quantidade .. "x" .. item
+    end
+    table.sort(consumido)
+
+    ctx.log.info("LOGISTICA FABRICOU " .. (produzido - sobrou) .. " x " .. raiz.item
+                 .. " em " .. #plano.fabricar .. " passo(s)"
+                 .. "; consumiu " .. (#consumido > 0 and table.concat(consumido, ", ") or "nada")
+                 .. "; entregue em " .. alvo.x .. "," .. alvo.y .. "," .. alvo.z)
 
     if sobrou > 0 then
         return produzido - sobrou, "o bau encheu; " .. sobrou .. " nao coube"

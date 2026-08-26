@@ -28,12 +28,99 @@ local viagem = mod.import("lib/viagem.lua")
 local abastecimento = mod.import("lib/abastecimento.lua")
 local autoteste = mod.import("lib/autoteste.lua")
 local fabricacao = mod.import("lib/fabricacao.lua")
-local fabricador = mod.import("lib/fabricador.lua")
 local chassi = mod.import("lib/chassi.lua")
 local viagem = mod.import("lib/viagem.lua")
 
+--- Le a receita da bancada encostada num fabricador e desenha nos slots dele.
+--
+-- Uma funcao, e nao so um comando: o botao da janela declarada chama a mesma coisa. Duas copias da
+-- leitura divergiriam no primeiro ajuste, e o botao passaria a fazer algo diferente do comando com
+-- o mesmo nome.
+--
+-- Devolve `ok, mensagem`.
+local function importar_padrao(ctx, x, y, z)
+    local bloco = ctx.server.get_block(x, y, z)
+    if bloco == nil or string.sub(bloco, 1, 20) ~= "logistica:fabricador" then
+        return false, "LOGISTICA nao ha fabricador em " .. x .. "," .. y .. "," .. z
+    end
+
+    local lados = {
+        { dx = 0, dy = 0, dz = -1 }, { dx = 0, dy = 0, dz = 1 },
+        { dx = -1, dy = 0, dz = 0 }, { dx = 1, dy = 0, dz = 0 },
+        { dx = 0, dy = 1, dz = 0 }, { dx = 0, dy = -1, dz = 0 },
+    }
+
+    for _, lado in ipairs(lados) do
+        local vx, vy, vz = x + lado.dx, y + lado.dy, z + lado.dz
+
+        -- Qualquer vizinho com nove slots serve. Nao exige bancada do jogo: um bloco de outro mod
+        -- que guarde um arranjo 3x3 responde a mesma pergunta, e recusar por id fecharia a porta
+        -- justamente para o caso que faz um modpack valer a pena.
+        local conteudo = nil
+        local ok = pcall(function() conteudo = ctx.server.container_at(vx, vy, vz) end)
+
+        if ok and conteudo ~= nil and #conteudo > 0 then
+            local maiorSlot = -1
+            for _, entrada in ipairs(conteudo) do
+                if entrada.slot > maiorSlot then maiorSlot = entrada.slot end
+            end
+
+            if maiorSlot >= 0 and maiorSlot <= 8 then
+                local padrao = {}
+                for slot = 1, 9 do padrao[slot] = "" end
+                for _, entrada in ipairs(conteudo) do
+                    padrao[entrada.slot + 1] = entrada.item
+                end
+
+                local saiu, saida = pcall(function()
+                    return ctx.server.crafting_result(padrao)
+                end)
+                if not saiu then saida = nil end
+
+                -- `set_slot` e nao `insert_into`: o inventario e fantasma e recusa maquina de
+                -- proposito, e a versao que acrescenta passa por esse portao.
+                for slot = 0, 8 do
+                    ctx.server.set_slot(x, y, z, slot, padrao[slot + 1], 1)
+                end
+
+                if saida ~= nil then
+                    ctx.server.set_slot(x, y, z, 9, saida.item, saida.count)
+                    return true, "LOGISTICA padrao importado de " .. vx .. "," .. vy .. "," .. vz
+                                 .. ": faz " .. saida.count .. " x " .. saida.item
+                end
+
+                -- Sem receita conhecida o padrao entra do mesmo jeito: quem sabe da maquina e o
+                -- jogador, e ele diz o que sai pelo slot de saida ou pelo comando.
+                return false, "LOGISTICA padrao importado, mas o jogo nao conhece esse arranjo:"
+                              .. " ponha o resultado no slot de saida"
+            end
+        end
+    end
+
+    return false, "LOGISTICA nenhuma bancada montada encostada neste cano"
+end
+
 mod.screen("terminal", terminal.evento)
-mod.screen("fabricador", fabricador.evento)
+
+-- O botao da janela declarada do fabricador.
+--
+-- O nome da tela e o id do bloco, e o valor e a posicao: sem ela o script saberia que alguem clicou
+-- em "importar" e nao em qual maquina. E o mesmo canal dos eventos de tela desenhada -- um botao e
+-- um botao, e dois canais dariam dois lugares para tratar a mesma coisa.
+local function botao_do_fabricador(ctx)
+    if ctx.ui.action ~= "click" or ctx.ui.element ~= "importar" then return end
+
+    local x, y, z = string.match(ctx.ui.value or "", "(-?%d+),(-?%d+),(-?%d+)")
+    if x == nil then return end
+
+    local ok, mensagem = importar_padrao(ctx, tonumber(x), tonumber(y), tonumber(z))
+    if ctx.player ~= nil then ctx.player.send_message(mensagem) end
+    if ok then ctx.log.info(mensagem) else ctx.log.warn(mensagem) end
+end
+
+mod.screen("fabricador", botao_do_fabricador)
+mod.screen("fabricador_mk2", botao_do_fabricador)
+mod.screen("fabricador_mk3", botao_do_fabricador)
 
 -- Um comando para conferir a rede sem estar no jogo.
 --
@@ -49,6 +136,9 @@ mod.screen("fabricador", fabricador.evento)
 --   /mod logistica modulo <x> <y> <z> <slot> <item> [qtd]  configura um slot do chassi
 --   /mod logistica padrao <x> <y> <z> <slot> <linhas>   padrao de bancada de um fabricante
 --   /mod logistica destino <x> <y> <z> <slot> [nome]   extrator entrega num satelite
+--   /mod logistica importar <x> <y> <z>                le a receita da bancada ao lado
+--   /mod logistica resultado <x> <y> <z> <item> [qtd] declara o que o cano produz
+--   /mod logistica fabricantes <x> <y> <z>            quem sabe fabricar o que, na rede
 --   /mod logistica estado <x> <y> <z>                     conexoes daquele cano, lado a lado
 --   /mod logistica mapa <x> <y> <z>                       a rede toda, e os canos soltos
 --   /mod logistica autoteste [caso]                       roda a bateria de verificacao
@@ -322,6 +412,103 @@ mod.command("logistica", function(ctx)
                                or ""),
                       achado == nil)
         end
+        return
+    end
+
+    if acao == "fabricantes" then
+        -- Quem, na rede, sabe fabricar o que -- e quem esta configurado pela metade.
+        --
+        -- Existe porque a fabricacao decide sozinha: sem uma lista, "a rede nao faz aquilo" e
+        -- indistinguivel de "o cano esta la e nao entendi o padrao dele". A resposta separa as duas.
+        local nos = rede.varrer(ctx, x, y, z)
+        responder(ctx, "LOGISTICA rede com " .. #nos .. " cano(s)")
+
+        local canos, prontos = 0, 0
+        for _, no in ipairs(nos) do
+            if rede.FABRICADORES[no.bloco] ~= nil then
+                canos = canos + 1
+
+                local padrao = chassi.padrao_do_bloco(ctx, no.x, no.y, no.z)
+                local saida = chassi.resultado_do_bloco(ctx, no.x, no.y, no.z)
+                local onde = "  " .. no.x .. "," .. no.y .. "," .. no.z .. " "
+                             .. string.gsub(no.bloco, "^logistica:", "")
+
+                if padrao == nil then
+                    responder(ctx, onde .. ": SEM PADRAO -- os nove slots estao vazios", true)
+                else
+                    -- Quantos itens diferentes o padrao usa, para a linha caber no chat.
+                    local ingredientes = {}
+                    for _, ingrediente in ipairs(fabricacao.ingredientes_do_padrao(padrao)) do
+                        ingredientes[#ingredientes + 1] = ingrediente.count .. "x"
+                                .. string.gsub(ingrediente.item, "^minecraft:", "")
+                    end
+
+                    if saida == nil then
+                        -- O jogo pode conhecer o arranjo mesmo sem resultado declarado.
+                        local ok, doJogo = pcall(function()
+                            return ctx.server.crafting_result(padrao)
+                        end)
+                        saida = ok and doJogo or nil
+                    end
+
+                    if saida == nil then
+                        responder(ctx, onde .. ": padrao de " .. table.concat(ingredientes, "+")
+                                       .. " -- SEM RESULTADO; ponha o produto no slot de saida",
+                                  true)
+                    else
+                        prontos = prontos + 1
+                        responder(ctx, onde .. ": " .. table.concat(ingredientes, "+")
+                                       .. " -> " .. saida.count .. "x"
+                                       .. string.gsub(saida.item, "^minecraft:", ""))
+                    end
+                end
+            end
+        end
+
+        -- Os modulos fabricantes do chassi contam junto: para quem pergunta, tanto faz de onde a
+        -- receita vem.
+        local padroes = chassi.padroes_na_rede(ctx, nos)
+        if canos == 0 and #padroes == 0 then
+            responder(ctx, "LOGISTICA nenhum fabricador nesta rede", true)
+        else
+            responder(ctx, "LOGISTICA " .. #padroes .. " receita(s) que a rede sabe fazer"
+                           .. " (" .. prontos .. " de " .. canos .. " cano(s) prontos)")
+        end
+        return
+    end
+
+    if acao == "resultado" then
+        -- Declara o que aquele cano produz, quando o jogo nao sabe dizer.
+        --
+        -- **E o que abre o sistema para qualquer maquina.** Um forno, um moedor, uma prensa de
+        -- outro mod: o loader nao entende nenhum deles, e nao precisa. O padrao diz o que entra, o
+        -- resultado diz o que sai, e a rede trata os dois como qualquer outra receita.
+        local item = args[5]
+        local quantidade = tonumber(args[6]) or 1
+
+        local bloco = ctx.server.get_block(x, y, z)
+        if bloco == nil or string.sub(bloco, 1, 20) ~= "logistica:fabricador" then
+            responder(ctx, "LOGISTICA nao ha fabricador em " .. x .. "," .. y .. "," .. z, true)
+            return
+        end
+        if item == nil then
+            local atual = chassi.resultado_do_bloco(ctx, x, y, z)
+            responder(ctx, "uso: /mod logistica resultado <x> <y> <z> <item> [quantidade]"
+                            .. " -- hoje: "
+                            .. (atual and (atual.count .. " x " .. atual.item) or "nada declarado"),
+                      true)
+            return
+        end
+
+        if not string.find(item, ":") then item = "minecraft:" .. item end
+        chassi.declarar_resultado(ctx, x, y, z, item, quantidade)
+        responder(ctx, "LOGISTICA este cano passa a produzir " .. quantidade .. " x " .. item)
+        return
+    end
+
+    if acao == "importar" then
+        local ok, mensagem = importar_padrao(ctx, x, y, z)
+        responder(ctx, mensagem, not ok)
         return
     end
 

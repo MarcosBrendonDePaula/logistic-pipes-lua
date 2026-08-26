@@ -9,6 +9,7 @@ Todos os PNGs desta pasta sao do **Logistic Pipes**, copiados sem alteracao de
 | `pipes/chassi/` | `textures/blocks/pipes/new_texture/chassi/` |
 | `modules/` | `textures/items/module/` |
 | `items/` | `textures/items/` |
+| `gui/` | `textures/gui/` |
 
 **Autoria:** Krapht, davboecki, RS485 e os contribuidores do Logistic Pipes.
 
